@@ -1,0 +1,58 @@
+Turn this syllabus into calendar events.
+
+Syllabus file: {{syllabus}}
+Course: {{course}}
+Term: {{term_start}} to {{term_end}}
+Your working folder: {{run_dir}}
+
+Week table (Week 1 is the week containing the first day of the term):
+{{week_table}}
+
+## Steps
+
+1. Extract the syllabus text:
+   python -m sycal.extract {{syllabus}} -o {{run_dir}}/text.txt
+2. Read the text in parts of about 80 lines, for example:
+   sed -n '1,80p' {{run_dir}}/text.txt
+3. Write every exam, assignment deadline, class meeting, office hour, and no-class day to
+   {{run_dir}}/events.json as a JSON list, using a heredoc:
+   cat <<'EOF' > {{run_dir}}/events.json
+   [ ...events... ]
+   EOF
+{%- if mode == "full" %}
+4. Check your file:
+   python -m sycal.validate {{run_dir}}/events.json --term-start {{term_start}} --term-end {{term_end}} --text {{run_dir}}/text.txt
+   If it prints FAIL, fix every error it lists, rewrite events.json, and run the check again.
+   Repeat until it prints OK.
+5. Submit: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
+{%- else %}
+4. Submit: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
+{%- endif %}
+
+## Event format
+
+Each event is a JSON object with exactly these fields:
+
+{
+  "course": "CS 101",
+  "title": "Quiz 2",
+  "type": "exam",
+  "date": "2026-10-14",
+  "start": "09:00",
+  "end": "09:50",
+  "recurrence": null,
+  "citation": "p.2: 'Quiz 2 - Wed 10/14 in class'",
+  "confidence": "high"
+}
+
+- course: use "{{course}}".
+- type: one of exam, assignment, class, office_hours, other.
+- date: YYYY-MM-DD. Dates like "10/29" are in the term's year. Convert "Week 6 Thursday" with the week table.
+- start / end: 24-hour "HH:MM", or null. A deadline "due 11:59 PM" has start "23:59" and end null.
+  An all-day item (like a holiday) has both null.
+- recurrence: null for one-time events. For a weekly meeting, an RRULE such as
+  "FREQ=WEEKLY;BYDAY=MO,WE;UNTIL=20261204", and date is the FIRST meeting.
+  Use one event per weekly meeting pattern, not one event per week.
+- citation: "p.N: '<exact words copied from text.txt>'". N is from the "=== page N ===" line above it.
+  Copy the words exactly; they are checked against the text.
+- confidence: "high" if the syllabus states the date clearly, otherwise "low".

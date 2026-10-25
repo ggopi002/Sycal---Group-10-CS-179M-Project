@@ -1,0 +1,47 @@
+# Model profiles for `python -m agent.run --model <profile>`. Owner: Sid.
+# Each profile is passed to mini-swe-agent's get_model(); ${VARS} are read from the environment.
+# Local Ollama models cost $0, so cost tracking errors are ignored for them.
+# num_gpu: 0 forces CPU. Sid's laptop (NVIDIA driver 546.30, CUDA 12.3) can't load Ollama 0.40's
+# CUDA kernels ("device kernel image is invalid"); remove it after a driver update.
+
+qwen-local:
+  model_name: ollama_chat/qwen3:4b
+  model_class: litellm_textbased
+  cost_tracking: ignore_errors
+  model_kwargs:
+    api_base: http://localhost:11434
+    temperature: 0
+    num_ctx: 16384
+    num_gpu: 0
+    think: false
+    drop_params: true
+
+gemma-local:
+  model_name: ollama_chat/gemma4:e2b
+  model_class: litellm_textbased
+  cost_tracking: ignore_errors
+  model_kwargs:
+    api_base: http://localhost:11434
+    temperature: 0
+    num_ctx: 16384
+    num_gpu: 0
+    drop_params: true
+
+# PLACEHOLDER: confirm the provider/model id and set OPENAI_API_KEY before use.
+luna:
+  model_name: openai/gpt-6-luna
+  model_class: litellm_textbased
+  model_kwargs:
+    temperature: 0
+    drop_params: true
+
+# PLACEHOLDER: stronger comparison model on NRP (OpenAI-compatible endpoint), Week 8.
+nrp-strong:
+  model_name: openai/${NRP_MODEL}
+  model_class: litellm_textbased
+  cost_tracking: ignore_errors
+  model_kwargs:
+    api_base: ${NRP_API_BASE}
+    api_key: ${NRP_API_KEY}
+    temperature: 0
+    drop_params: true

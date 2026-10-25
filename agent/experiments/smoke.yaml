@@ -1,0 +1,5 @@
+
+# python -m agent.run --experiment agent/experiments/smoke.yaml
+models: [qwen-local]
+modes: [baseline, full]
+syllabi: [sample.html]
