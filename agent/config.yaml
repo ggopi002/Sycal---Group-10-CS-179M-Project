@@ -1,0 +1,50 @@
+# mini-swe-agent settings for SyCal. Owner: Sid.
+# Model-specific settings live in models.yaml; per-mode overrides are under `modes`.
+
+prompts:
+  system: prompts/system.j2
+  instance: prompts/instance.j2
+
+agent:
+  step_limit: 30
+  cost_limit: 0.50              # USD per syllabus run (local models report $0)
+  wall_time_limit_seconds: 900
+  max_consecutive_format_errors: 3
+
+modes:
+  baseline:                     # extract -> write events -> submit; no validator
+    step_limit: 12
+  full:                         # validator loop until OK (Weeks 6-7 harness)
+    step_limit: 30
+
+environment:
+  timeout: 60
+  env:
+    PAGER: cat
+    PYTHONUTF8: "1"
+    PYTHONIOENCODING: utf-8
+
+model:
+  observation_template: |
+    {% if output.exception_info -%}
+    <exception>{{output.exception_info}}</exception>
+    {% endif -%}
+    <returncode>{{output.returncode}}</returncode>
+    {% if output.output | length < 6000 -%}
+    <output>
+    {{ output.output -}}
+    </output>
+    {%- else -%}
+    <warning>Output too long ({{ output.output | length }} characters). Read the file in smaller parts with sed -n 'START,ENDp'.</warning>
+    <output_head>
+    {{ output.output[:3000] }}
+    </output_head>
+    {%- endif -%}
+  format_error_template: |
+    {% if finish_reason is defined and finish_reason == "length" -%}
+    Your response was cut off. Be shorter and give exactly one command block.
+    {%- else -%}
+    Format error: {{error}}
+    Every response needs exactly ONE block that starts with ```mswea_bash_command and ends with ```.
+    You gave {{actions|length}}. If you are finished, the command is: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
+    {%- endif %}
