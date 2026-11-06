@@ -70,7 +70,11 @@ Who owns which part and what's due when: [TEAM.md](TEAM.md).
 ## Quickstart
 
 ```bash
-python -m venv .venv && .venv/Scripts/activate   # macOS/Linux: source .venv/bin/activate
+# Requires Python 3.12+. Windows:
+python -m venv .venv && .venv/Scripts/activate
+# macOS/Linux:
+python3 -m venv .venv && source .venv/bin/activate
+
 pip install -e ".[dev]"
 python -m pytest
 ollama pull qwen3:4b
