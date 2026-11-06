@@ -84,6 +84,9 @@ def load_settings(model_profile: str, mode: str) -> tuple[dict, dict]:
     agent_cfg["system_template"] = (AGENT_DIR / config["prompts"]["system"]).read_text(encoding="utf-8")
     agent_cfg["instance_template"] = (AGENT_DIR / config["prompts"]["instance"]).read_text(encoding="utf-8")
     model_cfg = config["model"] | _expand_env(profiles[model_profile])
+    # Per-machine setting, not in models.yaml: forcing CPU on one laptop shouldn't slow everyone else's.
+    if (num_gpu := os.environ.get("SYCAL_NUM_GPU")) and model_cfg["model_name"].startswith("ollama"):
+        model_cfg["model_kwargs"]["num_gpu"] = int(num_gpu)
     return {"agent": agent_cfg, "environment": config["environment"]}, model_cfg
 
 

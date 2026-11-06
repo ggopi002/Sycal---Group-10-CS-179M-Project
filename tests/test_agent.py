@@ -8,6 +8,15 @@ from agent import run
 from agent.run import Syllabus
 
 
+def test_num_gpu_only_set_by_env_on_local_models(monkeypatch):
+    monkeypatch.delenv("SYCAL_NUM_GPU", raising=False)
+    assert "num_gpu" not in run.load_settings("qwen-local", "full")[1]["model_kwargs"]
+
+    monkeypatch.setenv("SYCAL_NUM_GPU", "0")
+    assert run.load_settings("qwen-local", "full")[1]["model_kwargs"]["num_gpu"] == 0
+    assert "num_gpu" not in run.load_settings("luna", "full")[1]["model_kwargs"]
+
+
 def test_scripted_agent_run(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "OUTPUTS_DIR", tmp_path)
     monkeypatch.setattr(run, "LEDGER", tmp_path / "ledger.csv")
