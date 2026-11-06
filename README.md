@@ -55,13 +55,27 @@ The schema is locked. Every event the agent produces, and every hand label, must
 ## Repository layout
 
 ```
-data/syllabi/   raw syllabus PDFs / HTML
+data/syllabi/   raw syllabus PDFs / HTML + manifest.csv (course, term dates)
 data/labels/    hand labels, one JSON file per syllabus
-sycal/          extraction, validation, and .ics generation
-                (extract.py, validate.py, to_ics.py)
-agent/          mini-swe-agent config and prompts
+sycal/          event schema, extraction, validation, and .ics generation
+                (schema.py, extract.py, validate.py, to_ics.py)
+agent/          mini-swe-agent loop, config, model profiles, prompts, experiments
 eval/           scoring (score.py)
-outputs/        generated .ics files and review lists
+outputs/        run results, generated .ics files, review lists, cost ledger
+tests/          pytest suite
+```
+
+Who owns which part and what's due when: [TEAM.md](TEAM.md).
+
+## Quickstart
+
+```bash
+python -m venv .venv && .venv/Scripts/activate   # macOS/Linux: source .venv/bin/activate
+pip install -e ".[dev]"
+python -m pytest
+ollama pull qwen3:4b
+python -m agent.run --model qwen-local --mode full --syllabus sample.html
+python -m eval.score outputs/<run_id>/qwen-local-full
 ```
 
 ## Evaluation
