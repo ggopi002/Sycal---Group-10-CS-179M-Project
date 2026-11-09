@@ -1,0 +1,168 @@
+/* SyCal home page.
+   Idea: a page from a student planner. White paper, navy ink, yellow highlighter,
+   blue pen, and a couple of handwritten notes. */
+:root {
+  --paper: #ffffff;
+  --grid: #eef2f8;
+  --ink: #1d2b4f;
+  --pencil: #6b7385;
+  --pen: #2f5bd3;
+  --highlighter: #ffe45c;
+  --red-pen: #d6453d;
+  --line: #d9dfea;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+  font-family: "Bricolage Grotesque", system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.55;
+  /* faint graph-paper grid */
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.topbar { padding: 20px 32px; }
+.brand { font-weight: 800; font-size: 20px; letter-spacing: -0.01em; }
+
+/* ---------- layout: words on the left, planner page on the right ---------- */
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 48px 32px 64px;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 64px;
+  align-items: center;
+}
+
+h1 {
+  font-size: clamp(36px, 5vw, 56px);
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 18px;
+  max-width: 12ch;
+}
+
+.lede { color: var(--pencil); max-width: 42ch; margin: 0 0 32px; }
+
+/* ---------- upload ---------- */
+.upload { display: grid; gap: 12px; max-width: 440px; }
+
+.picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: var(--paper);
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.picker input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.picker:focus-within { outline: 3px solid var(--pen); outline-offset: 2px; }
+
+.picker-button {
+  flex: none;
+  padding: 6px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.picker:hover .picker-button { border-color: var(--ink); }
+.picker-name { color: var(--pencil); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+button {
+  justify-self: start;
+  padding: 12px 22px;
+  background: var(--ink);
+  color: var(--paper);
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:hover { background: var(--pen); }
+button:focus-visible { outline: 3px solid var(--pen); outline-offset: 2px; }
+
+.message { max-width: 440px; margin: 0 0 16px; padding: 10px 14px; border-radius: 8px; font-size: 15px; }
+.message.success { background: #eaf6ee; border: 1.5px solid #2f8a57; }
+.message.error { background: #fdeeed; border: 1.5px solid var(--red-pen); }
+
+/* ---------- the planner page (the one bold thing) ---------- */
+.planner {
+  position: relative;
+  background: var(--paper);
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  padding: 22px 22px 26px;
+  transform: rotate(1.5deg);
+  box-shadow: 6px 6px 0 var(--ink);
+}
+
+.planner-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+.month { font-weight: 800; font-size: 24px; }
+.year { color: var(--pencil); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  text-align: center;
+  font-size: 15px;
+}
+.grid span { padding: 8px 0; }
+.grid .dow { color: var(--pencil); font-size: 13px; font-weight: 600; padding-bottom: 4px; }
+
+/* yellow highlighter swipe */
+.grid .hl {
+  background: linear-gradient(transparent 20%, var(--highlighter) 20%, var(--highlighter) 85%, transparent 85%);
+  border-radius: 3px;
+  font-weight: 600;
+}
+/* circled in blue pen */
+.grid .circle {
+  font-weight: 600;
+  border: 2px solid var(--pen);
+  border-radius: 50% 45% 55% 48%;
+  transform: rotate(-6deg);
+}
+/* crossed out: no class */
+.grid .off { color: var(--pencil); text-decoration: line-through var(--red-pen) 2px; }
+
+.note {
+  position: absolute;
+  margin: 0;
+  font-family: "Caveat", cursive;
+  font-size: 24px;
+  line-height: 1;
+}
+.note-midterm { color: var(--pen); left: 2%; bottom: -34px; transform: rotate(-4deg); }
+.note-hw { color: var(--ink); right: 4%; bottom: -30px; transform: rotate(3deg); }
+
+.footer { text-align: center; color: var(--pencil); font-size: 14px; padding: 24px; }
+
+/* ---------- phones ---------- */
+@media (max-width: 760px) {
+  .page { grid-template-columns: 1fr; gap: 56px; padding: 24px 16px 72px; }
+  .topbar { padding: 16px; }
+  .planner { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
