@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SyCal.ai</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">SyCal.ai</span>
+  </header>
+
+  <main class="page">
+    <section class="intro">
+      <h1>Your whole quarter, on your calendar.</h1>
+      <p class="lede">Upload a syllabus and SyCal pulls out every due date, exam, and office hour, so you don't have to type them in yourself.</p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <p class="message {{ category }}" role="status">{{ message }}</p>
+        {% endfor %}
+      {% endwith %}
+
+      <form class="upload" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+        <label class="picker">
+          <input type="file" name="syllabus" id="syllabus" accept=".pdf,.html,.htm" required>
+          <span class="picker-button">Choose file</span>
+          <span class="picker-name" id="file-name">PDF or HTML, up to 10 MB</span>
+        </label>
+        <button type="submit">Upload syllabus</button>
+      </form>
+    </section>
+
+    <!-- Decorative: a page from a student planner -->
+    <aside class="planner" aria-hidden="true">
+      <div class="planner-head">
+        <span class="month">November</span>
+        <span class="year">2026</span>
+      </div>
+      <div class="grid">
+        <span class="dow">S</span><span class="dow">M</span><span class="dow">T</span><span class="dow">W</span><span class="dow">T</span><span class="dow">F</span><span class="dow">S</span>
+        <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span class="hl">6</span><span>7</span>
+        <span>8</span><span>9</span><span>10</span><span class="off">11</span><span>12</span><span>13</span><span>14</span>
+        <span>15</span><span>16</span><span class="circle">17</span><span>18</span><span>19</span><span class="hl">20</span><span>21</span>
+        <span>22</span><span>23</span><span>24</span><span>25</span><span class="off">26</span><span>27</span><span>28</span>
+        <span>29</span><span>30</span>
+      </div>
+      <p class="note note-midterm">midterm 2!</p>
+      <p class="note note-hw">hw due</p>
+    </aside>
+  </main>
+
+  <footer class="footer">CS 179M, Group 10</footer>
+
+  <script>
+    // Show the chosen file's name next to the button.
+    document.getElementById("syllabus").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      document.getElementById("file-name").textContent = file ? file.name : "PDF or HTML, up to 10 MB";
+    });
+  </script>
+</body>
+</html>
