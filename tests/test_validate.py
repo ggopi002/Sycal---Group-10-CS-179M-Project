@@ -8,6 +8,7 @@ from sycal.validate import (
     named_weekdays,
     repair_against_text,
     repair_event,
+    states_date,
     validate_events,
 )
 
@@ -139,3 +140,29 @@ def test_missing_confidence_defaults_to_low():
     ev = {"course": "CS 1", "title": "x", "type": "other", "date": "2026-10-01", "citation": "p.1: 'x'"}
     assert repair_event(ev) == ["confidence missing -> low"]
     assert ev["confidence"] == "low"
+
+
+def test_states_date():
+    assert states_date("p.1: 'HW1 due Fri 10/2 at 11:59 PM'")
+    assert states_date("p.1: 'Holidays Nov. 11 (Veteran's Day)'")
+    assert states_date("p.1: 'Midterm in class, Week 6'")
+    assert not states_date("p.2: 'There will be 2 homework assignments and 5 in-class quizzes.'")
+
+
+def test_undated_event_must_be_low_confidence(sample_file):
+    events = _raw(sample_file)
+    events[2]["citation"] = "p.2: 'There will be 2 homework assignments and 5 in-class quizzes.'"
+    assert any("citation gives no date" in e for e in _validate(events, sample_file))
+    events[2]["confidence"] = "low"  # an estimate the student confirms later is allowed
+    assert not any("citation gives no date" in e for e in _validate(events, sample_file))
+
+
+def test_fix_marks_estimated_dates_low(tmp_path, sample_file, capsys):
+    events = _raw(sample_file)
+    events[2]["citation"] = "p.1: 'There will be 2 homework assignments.'"
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps(events), encoding="utf-8")
+
+    assert main([str(path), "--fix"] + ["--term-start", sample_file.term_start, "--term-end", sample_file.term_end]) == 0
+    assert "the date is an estimate" in capsys.readouterr().out
+    assert json.loads(path.read_text(encoding="utf-8"))[2]["confidence"] == "low"

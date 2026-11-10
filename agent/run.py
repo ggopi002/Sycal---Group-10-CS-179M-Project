@@ -32,7 +32,7 @@ from minisweagent.models import get_model
 
 from agent.environment import BashEnvironment
 from sycal import extract, to_ics
-from sycal.schema import EventFile, check_event, dump_event_file, event_from_dict
+from sycal.schema import EventFile, check_event, event_from_dict
 from sycal.validate import errors_by_event, format_week_table, is_grounded, repair_against_text, repair_event
 
 REPO = Path(__file__).resolve().parent.parent
@@ -177,9 +177,7 @@ def finalize(out_dir: Path, syllabus: Syllabus) -> dict:
     stats["n_dropped"] = len(raw_events) - len(valid)
     events = [event_from_dict(e) for e in valid]
     event_file = EventFile(syllabus.file, syllabus.term_start, syllabus.term_end, events)
-    dump_event_file(event_file, events_path)
-    (out_dir / "out.ics").write_bytes(to_ics.to_calendar(event_file).to_ical())
-    (out_dir / "review.md").write_text(to_ics.review_markdown(event_file), encoding="utf-8")
+    to_ics.write_outputs(event_file, out_dir)
     stats["n_events"] = len(events)
     stats["n_low"] = sum(ev.confidence == "low" for ev in events)
     return stats

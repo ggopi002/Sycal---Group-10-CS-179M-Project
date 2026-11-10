@@ -8,6 +8,8 @@ Checks:
   * every event matches the schema (sycal/schema.py)
   * dates fall inside the term; recurring events have an UNTIL/COUNT inside the term
   * weekdays named in the citation match the date (one-off events)
+  * a one-off event whose citation gives no date ("5 in-class quizzes") is low confidence:
+    its date is an estimate the student confirms later (python -m sycal.confirm)
   * recurring events' BYDAY includes the first date's weekday
   * no duplicate events
   * end time is after start time
@@ -59,6 +61,22 @@ def named_weekdays(citation: str) -> set[int]:
     for m in _COMPACT_RE.finditer(quote):
         days |= {_COMPACT_DAY[d] for d in re.findall(r"Tu|Th|M|T|W|R|F", m.group(1))}
     return days
+
+
+# "10/14", "2026-10-14", "Oct. 14", "14 October", "Week 6".
+_MONTH = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+_DATE_HINT_RE = re.compile(
+    rf"\b\d{{1,2}}/\d{{1,2}}\b|\b\d{{4}}-\d{{2}}-\d{{2}}\b|\b{_MONTH}\.?\s*\d{{1,2}}\b|\b\d{{1,2}}\s+{_MONTH}\b|\bweek\s*\d+\b",
+    re.I,
+)
+
+
+def states_date(citation: str) -> bool:
+    """Whether the quote says when something happens. "5 in-class quizzes" doesn't, so a date
+    given for one of them is the model's estimate, not the syllabus's."""
+    return bool(_DATE_HINT_RE.search(citation_quote(citation)) or named_weekdays(citation))
+
+
 _PAGE_PREFIX_RE = re.compile(r"^\s*p(?:age)?\.?\s*\d+\s*[:,\-]?\s*", re.I)
 _MULTI_QUOTE_RE = re.compile(r"(?<=['’\"])\s*[,;]\s*(?=p(?:age)?\.?\s*\d+\s*:)", re.I)
 
@@ -201,6 +219,11 @@ def errors_by_event(
             if named and day.weekday() not in named:
                 said = "/".join(WEEKDAYS[d].title() for d in sorted(named))
                 errors.append(f"{label}: date {ev['date']} is a {WEEKDAYS[day.weekday()].title()} but citation says {said}")
+            if ev["confidence"] != "low" and not states_date(ev["citation"]):
+                errors.append(
+                    f"{label}: citation gives no date, so {ev['date']} is a guess; if the syllabus never says when, "
+                    'keep your best estimate but set confidence "low" so the student confirms it'
+                )
 
         if ev.get("start") and ev.get("end") and ev["end"] <= ev["start"]:
             errors.append(f"{label}: end {ev['end']} is not after start {ev['start']}")
@@ -227,6 +250,17 @@ def flag_ungrounded(raw_events: list, text: str) -> list[str]:
         if not check_event(ev) and not is_grounded(ev["citation"], text):
             ev["confidence"] = "low"
             flagged.append(f"needs review, event {i} ({ev['title']}): citation not found in the syllabus text, set confidence low")
+    return flagged
+
+
+def flag_estimated(raw_events: list) -> list[str]:
+    """Set confidence low on one-off events whose citation gives no date: the date is the
+    model's estimate and the student has to confirm it. Same fix the error asks for, no rewrite."""
+    flagged = []
+    for i, ev in enumerate(raw_events, 1):
+        if not check_event(ev) and not ev.get("recurrence") and ev["confidence"] != "low" and not states_date(ev["citation"]):
+            ev["confidence"] = "low"
+            flagged.append(f"needs review, event {i} ({ev['title']}): citation gives no date, so the date is an estimate; set confidence low")
     return flagged
 
 
@@ -391,6 +425,7 @@ def main(argv: list[str] | None = None) -> int:
         ]
         if text is not None:
             fixed += flag_ungrounded(events, text)
+        fixed += flag_estimated(events)
         if fixed:
             Path(args.events).write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 

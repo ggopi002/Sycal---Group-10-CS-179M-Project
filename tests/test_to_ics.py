@@ -16,3 +16,11 @@ def test_low_confidence_gets_verify_tag(sample_file):
     summaries = [str(e["SUMMARY"]) for e in to_calendar(sample_file).walk("VEVENT")]
     assert summaries[4] == "[VERIFY] CS 999: Midterm"
     assert "Midterm" in review_markdown(sample_file)
+
+
+def test_estimated_date_is_explained(sample_file):
+    ev = sample_file.events[2]
+    ev.citation, ev.confidence = "p.2: 'There will be 2 homework assignments.'", "low"
+    review = review_markdown(sample_file)
+    assert "event 3: **HW1 due**" in review and "estimate" in review
+    assert "estimate" in str(to_calendar(sample_file).walk("VEVENT")[2]["DESCRIPTION"])

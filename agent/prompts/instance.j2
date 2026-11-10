@@ -31,6 +31,10 @@ read it again. "=== page N ===" lines mark the pages.
    - A schedule table of lecture topics (8.1, 8.2, "Intro", ...) is NOT a list of events. From it,
      take only exams, deadlines, and days with no class ("N/A", "no class", "holiday").
    - Each discussion/lab section is one weekly event.
+   - If the syllabus says something happens but never says when (e.g. "5 in-class quizzes"), you
+     may estimate the dates: spread them over the term on class days, skipping holidays. Every
+     estimated event gets confidence "low"; cite the sentence that mentions it. The student
+     confirms estimated dates later.
 {%- if mode == "full" %}
 2. Check your file:
    python -m sycal.validate {{run_dir}}/events.json --term-start {{term_start}} --term-end {{term_end}} --text {{run_dir}}/text.txt --fix
@@ -71,4 +75,4 @@ take every event from the syllabus text above, never from this example.
   Use one event per weekly meeting pattern, not one event per week.
 - citation: "p.N: '<exact words copied from the syllabus text>'". N is from the "=== page N ===" line above it.
   Copy the words exactly; they are checked against the text.
-- confidence: "high" if the syllabus states the date clearly, otherwise "low".
+- confidence: "high" if the syllabus states the date clearly, otherwise "low" (always "low" for an estimated date).
