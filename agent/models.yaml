@@ -2,6 +2,9 @@
 # Each profile is passed to mini-swe-agent's get_model(); ${VARS} are read from the environment.
 # Local Ollama models cost $0, so cost tracking errors are ignored for them.
 # If Ollama can't use your GPU, set SYCAL_NUM_GPU=0 to force CPU on your machine (see agent/run.py).
+# max_tokens caps one reply (litellm sends it to Ollama as num_predict). It must fit the longest
+# legitimate reply, the events.json heredoc (~110 tokens per event), but stops a runaway reply
+# in about a minute instead of letting it hit Ollama's repeat limit after several.
 
 qwen-local:
   model_name: ollama_chat/qwen3:4b
@@ -11,7 +14,22 @@ qwen-local:
     api_base: http://localhost:11434
     temperature: 0
     num_ctx: 16384
-    think: false
+    max_tokens: 2500
+    timeout: 180  # seconds per model call; a stalled Ollama fails the run instead of hanging it
+    think: false  # qwen3:4b still reasons in its reply text with this off; see qwen25-local
+    drop_params: true
+
+# Non-thinking model: answers directly instead of reasoning in every reply.
+qwen25-local:
+  model_name: ollama_chat/qwen2.5:7b-instruct
+  model_class: litellm_textbased
+  cost_tracking: ignore_errors
+  model_kwargs:
+    api_base: http://localhost:11434
+    temperature: 0
+    num_ctx: 16384
+    max_tokens: 2500
+    timeout: 180  # seconds per model call; a stalled Ollama fails the run instead of hanging it
     drop_params: true
 
 gemma-local:
@@ -22,6 +40,8 @@ gemma-local:
     api_base: http://localhost:11434
     temperature: 0
     num_ctx: 16384
+    max_tokens: 2500
+    timeout: 180  # seconds per model call; a stalled Ollama fails the run instead of hanging it
     drop_params: true
 
 # PLACEHOLDER: confirm the provider/model id and set OPENAI_API_KEY before use.

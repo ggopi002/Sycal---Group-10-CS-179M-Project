@@ -5,7 +5,8 @@
 Each run writes outputs/<run_id>/<model>-<mode>/<syllabus stem>/:
     text.txt           extracted syllabus (written by the agent)
     events.agent.json  exactly what the agent wrote
-    events.json        final events: invalid ones dropped, ungrounded citations set to low confidence
+    events.json        final events: invalid ones dropped, ones with errors or ungrounded
+                       citations set to low confidence
     out.ics, review.md calendar + needs-review list
     trajectory.json    full mini-swe-agent conversation (for error analysis)
 and appends one row to outputs/ledger.csv.
@@ -30,9 +31,9 @@ from minisweagent.agents.default import DefaultAgent
 from minisweagent.models import get_model
 
 from agent.environment import BashEnvironment
-from sycal import to_ics
+from sycal import extract, to_ics
 from sycal.schema import EventFile, check_event, dump_event_file, event_from_dict
-from sycal.validate import format_week_table, is_grounded, validate_events
+from sycal.validate import errors_by_event, format_week_table, is_grounded, repair_against_text, repair_event
 
 REPO = Path(__file__).resolve().parent.parent
 AGENT_DIR = REPO / "agent"
@@ -55,6 +56,15 @@ class Syllabus:
     @property
     def stem(self) -> str:
         return Path(self.file).stem
+
+    @property
+    def path(self) -> Path:
+        """Manifest entries are bare names in data/syllabi/; anything else (e.g. a UI upload in
+        outputs/uploads/) is a path, relative to the repo root unless absolute."""
+        file = Path(self.file)
+        if file.parent == Path("."):
+            return SYLLABI_DIR / file
+        return file if file.is_absolute() else REPO / file
 
 
 def load_manifest(path: Path = SYLLABI_DIR / "manifest.csv") -> dict[str, Syllabus]:
@@ -147,15 +157,25 @@ def finalize(out_dir: Path, syllabus: Syllabus) -> dict:
     if not isinstance(raw_events, list):
         raw_events = []
     text = text_path.read_text(encoding="utf-8") if text_path.exists() else ""
+    for ev in raw_events:  # same repairs as `validate --fix`, so baseline and stopped runs get them too
+        repair_event(ev)
+        repair_against_text(ev, text or None)
 
-    stats["validation_errors"] = len(validate_events(raw_events, syllabus.term_start, syllabus.term_end, text or None))
+    by_event = errors_by_event(raw_events, syllabus.term_start, syllabus.term_end, text or None)
+    stats["validation_errors"] = sum(len(errors) for errors in by_event.values())
+    for i, ev in enumerate(raw_events, 1):
+        if check_event(ev):
+            continue
+        ungrounded = not is_grounded(ev["citation"], text)
+        if ungrounded and ev["confidence"] != "low":
+            stats["n_ungrounded"] += 1
+        # Any error left after repair (date outside the term, BYDAY vs date, ...) means the
+        # event needs a human look; it stays on the calendar tagged [VERIFY].
+        if ungrounded or i in by_event:
+            ev["confidence"] = "low"
     valid = [e for e in raw_events if not check_event(e)]
     stats["n_dropped"] = len(raw_events) - len(valid)
     events = [event_from_dict(e) for e in valid]
-    for ev in events:
-        if not is_grounded(ev.citation, text) and ev.confidence != "low":
-            ev.confidence = "low"
-            stats["n_ungrounded"] += 1
     event_file = EventFile(syllabus.file, syllabus.term_start, syllabus.term_end, events)
     dump_event_file(event_file, events_path)
     (out_dir / "out.ics").write_bytes(to_ics.to_calendar(event_file).to_ical())
@@ -172,11 +192,16 @@ def run_one(syllabus: Syllabus, model_profile: str, mode: str, run_id: str, *, m
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
+    # Extract up front and put the text in the prompt: saves the agent an extract step and one
+    # step per 80 lines read, which dominate run time on local models.
+    text = extract.extract_text(syllabus.path)
+    (out_dir / "text.txt").write_text(text, encoding="utf-8")
 
     env_cfg = settings["environment"]
     env = BashEnvironment(
         cwd=str(REPO),
         timeout=env_cfg["timeout"],
+        max_failed_checks=env_cfg.get("max_failed_checks", 2),
         # Put this interpreter first on PATH so `python -m sycal...` finds the project's packages.
         env=env_cfg["env"] | {"PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")},
     )
@@ -186,12 +211,13 @@ def run_one(syllabus: Syllabus, model_profile: str, mode: str, run_id: str, *, m
     try:
         result = agent.run(
             task="",
-            syllabus=_shell_path(SYLLABI_DIR / syllabus.file),
+            syllabus=_shell_path(syllabus.path),
             run_dir=_shell_path(out_dir),
             course=syllabus.course,
             term_start=syllabus.term_start,
             term_end=syllabus.term_end,
             week_table=format_week_table(syllabus.term_start, syllabus.term_end),
+            syllabus_text=text,
             mode=mode,
         )
         exit_status = result.get("exit_status", "")
@@ -221,6 +247,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", action="append", help="model profile from agent/models.yaml (repeatable)")
     parser.add_argument("--mode", action="append", choices=["baseline", "full"], help="(repeatable)")
     parser.add_argument("--syllabus", action="append", help="file name from data/syllabi/manifest.csv (repeatable)")
+    parser.add_argument("--file", action="append", help="any syllabus path, e.g. a UI upload (repeatable); needs the term")
+    parser.add_argument("--course", default="", help="course code for --file (default: read from the syllabus)")
+    parser.add_argument("--term-start", help="YYYY-MM-DD, for --file")
+    parser.add_argument("--term-end", help="YYYY-MM-DD including finals week, for --file")
     parser.add_argument("--run-id", default=datetime.now().strftime("%Y%m%d-%H%M%S"))
     parser.add_argument("--max-total-cost", type=float, default=20.0, help="stop if outputs/ledger.csv exceeds this")
     args = parser.parse_args(argv)
@@ -228,11 +258,20 @@ def main(argv: list[str] | None = None) -> int:
     plan = yaml.safe_load(Path(args.experiment).read_text(encoding="utf-8")) if args.experiment else {}
     models = args.model or plan.get("models") or ["qwen-local"]
     modes = args.mode or plan.get("modes") or ["full"]
-    manifest = load_manifest()
-    names = args.syllabus or plan.get("syllabi") or list(manifest)
-    missing = [n for n in names if n not in manifest]
-    if missing:
-        raise SystemExit(f"not in data/syllabi/manifest.csv: {', '.join(missing)}")
+    if args.file:
+        if not (args.term_start and args.term_end):
+            parser.error("--file needs --term-start and --term-end")
+        manifest = {f: Syllabus(f, args.course, args.term_start, args.term_end) for f in args.file}
+        missing = [f for f, s in manifest.items() if not s.path.is_file()]
+        if missing:
+            raise SystemExit(f"file not found: {', '.join(missing)}")
+        names = list(manifest)
+    else:
+        manifest = load_manifest()
+        names = args.syllabus or plan.get("syllabi") or list(manifest)
+        missing = [n for n in names if n not in manifest]
+        if missing:
+            raise SystemExit(f"not in data/syllabi/manifest.csv: {', '.join(missing)}")
 
     for model_profile in models:
         for mode in modes:

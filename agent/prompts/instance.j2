@@ -1,37 +1,52 @@
 Turn this syllabus into calendar events.
 
-Syllabus file: {{syllabus}}
-Course: {{course}}
+Course: {{course or "(not given; use the course code written at the top of the syllabus)"}}
 Term: {{term_start}} to {{term_end}}
 Your working folder: {{run_dir}}
 
 Week table (Week 1 is the week containing the first day of the term):
 {{week_table}}
 
+The syllabus text is below. It is also saved in {{run_dir}}/text.txt, so you do not need to
+read it again. "=== page N ===" lines mark the pages.
+
+<syllabus_text>
+{{syllabus_text}}
+</syllabus_text>
+
 ## Steps
 
-1. Extract the syllabus text:
-   python -m sycal.extract {{syllabus}} -o {{run_dir}}/text.txt
-2. Read the text in parts of about 80 lines, for example:
-   sed -n '1,80p' {{run_dir}}/text.txt
-3. Write every exam, assignment deadline, class meeting, office hour, and no-class day to
-   {{run_dir}}/events.json as a JSON list, using a heredoc:
+1. Write every exam, assignment deadline, class meeting, lab, office hour, and no-class day to
+   {{run_dir}}/events.json as a JSON list with ONE EVENT PER LINE and no indentation, using a heredoc:
    cat <<'EOF' > {{run_dir}}/events.json
-   [ ...events... ]
+   [
+   {"course": "CS 101", "title": "Quiz 2", "type": "exam", "date": "2026-10-14", "start": "09:00", "end": "09:50", "recurrence": null, "citation": "p.2: 'Quiz 2 - Wed 10/14 in class'", "confidence": "high"},
+   ...one line like that per event, with all nine fields...
+   ]
    EOF
+
+   How to read a syllabus:
+   - Class meetings come from the meeting line (e.g. "MWF 8:00-8:50", "TTh 9:30-10:50"): ONE event
+     per meeting pattern with a weekly recurrence, not one event per lecture or per topic.
+   - A schedule table of lecture topics (8.1, 8.2, "Intro", ...) is NOT a list of events. From it,
+     take only exams, deadlines, and days with no class ("N/A", "no class", "holiday").
+   - Each discussion/lab section is one weekly event.
 {%- if mode == "full" %}
-4. Check your file:
-   python -m sycal.validate {{run_dir}}/events.json --term-start {{term_start}} --term-end {{term_end}} --text {{run_dir}}/text.txt
-   If it prints FAIL, fix every error it lists, rewrite events.json, and run the check again.
-   Repeat until it prints OK.
-5. Submit: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
+2. Check your file:
+   python -m sycal.validate {{run_dir}}/events.json --term-start {{term_start}} --term-end {{term_end}} --text {{run_dir}}/text.txt --fix
+   (--fix repairs simple format slips itself and lists them as "auto-fixed"; you only fix the errors.)
+   If it prints OK, go straight to step 3. If it prints FAIL, fix every error it lists by writing
+   the WHOLE file again with the same cat <<'EOF' command (do not edit it with sed), then run the
+   check once more. You get two checks; after that the run ends with the file as it is.
+3. Submit: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
 {%- else %}
-4. Submit: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
+2. Submit: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
 {%- endif %}
 
 ## Event format
 
-Each event is a JSON object with exactly these fields:
+Each event is a JSON object with exactly these fields. The values here only show the format;
+take every event from the syllabus text above, never from this example.
 
 {
   "course": "CS 101",
@@ -45,14 +60,15 @@ Each event is a JSON object with exactly these fields:
   "confidence": "high"
 }
 
-- course: use "{{course}}".
-- type: one of exam, assignment, class, office_hours, other.
+- course: {% if course %}use "{{course}}".{% else %}the course code as written in the syllabus, e.g. "CS 180" or "MATH 009C".{% endif %}
+- type: one of exam, assignment, class, office_hours, other. Labs and discussion sections are "class".
 - date: YYYY-MM-DD. Dates like "10/29" are in the term's year. Convert "Week 6 Thursday" with the week table.
 - start / end: 24-hour "HH:MM", or null. A deadline "due 11:59 PM" has start "23:59" and end null.
   An all-day item (like a holiday) has both null.
 - recurrence: null for one-time events. For a weekly meeting, an RRULE such as
   "FREQ=WEEKLY;BYDAY=MO,WE;UNTIL=20261204", and date is the FIRST meeting.
+  BYDAY uses two-letter days: MO TU WE TH FR SA SU ("TTh" is TU,TH; "MWF" is MO,WE,FR).
   Use one event per weekly meeting pattern, not one event per week.
-- citation: "p.N: '<exact words copied from text.txt>'". N is from the "=== page N ===" line above it.
+- citation: "p.N: '<exact words copied from the syllabus text>'". N is from the "=== page N ===" line above it.
   Copy the words exactly; they are checked against the text.
 - confidence: "high" if the syllabus states the date clearly, otherwise "low".

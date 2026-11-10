@@ -30,6 +30,7 @@ CONFIDENCE_LEVELS = ("high", "low")
 FIELDS = ("course", "title", "type", "date", "start", "end", "recurrence", "citation", "confidence")
 
 _TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+_BYDAY_RE = re.compile(r"^[+-]?\d{0,2}(MO|TU|WE|TH|FR|SA|SU)$")
 
 
 class SchemaError(ValueError):
@@ -91,6 +92,18 @@ def check_event(d: object) -> list[str]:
     if d.get("end") is not None and d.get("start") is None:
         problems.append("end is set but start is null")
     if d.get("recurrence") is not None:
+        rule = str(d["recurrence"]).removeprefix("RRULE:")
+        # Name the bad day: small models can't spot "WED" vs "WE" from the generic message below.
+        bad_days = [
+            day
+            for part in rule.split(";")
+            if part.upper().startswith("BYDAY=")
+            for day in part[len("BYDAY=") :].split(",")
+            if not _BYDAY_RE.match(day.strip().upper())
+        ]
+        if bad_days:
+            problems.append(f"recurrence BYDAY '{','.join(bad_days)}' must use two-letter days: MO,TU,WE,TH,FR,SA,SU")
+            return problems
         try:
             # from_ical returns {} for text with no KEY=VALUE parts, so require FREQ explicitly.
             if "FREQ" not in vRecur.from_ical(str(d["recurrence"]).removeprefix("RRULE:")):
