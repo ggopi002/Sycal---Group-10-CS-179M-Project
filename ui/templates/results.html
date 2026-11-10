@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}{{ job.course or job.name }} · SyCal.ai{% endblock %}
+{% block head %}
+  {% if job.status == "running" %}<meta http-equiv="refresh" content="5">{% endif %}
+{% endblock %}
+
+{% block main %}
+  <main class="results">
+    <p class="crumb"><a href="{{ url_for('home') }}">← Upload another</a></p>
+    <h1 class="results-title">{{ job.course or job.name }}</h1>
+    <p class="lede">{{ job.name }} · term {{ job.term_start }} to {{ job.term_end }}</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <p class="message {{ category }}" role="status">{{ message }}</p>
+      {% endfor %}
+    {% endwith %}
+
+    {% if job.status == "running" %}
+      <div class="card working" role="status">
+        <p class="hand">reading your syllabus…</p>
+        <ol class="progress">
+          <li class="done">Read the syllabus</li>
+          {% for step in progress %}
+            <li class="{{ 'current' if loop.last else 'done' }}">{{ step }}</li>
+          {% endfor %}
+          {% if not progress %}<li class="current">Finding dates…</li>{% endif %}
+        </ol>
+        <p class="elapsed">{{ elapsed // 60 }}:{{ "%02d"|format(elapsed % 60) }} so far. A run takes up to about 5 minutes on a local model; this page refreshes by itself.</p>
+      </div>
+
+    {% elif not events %}
+      <div class="card">
+        <h2>No calendar this time</h2>
+        {% if salvageable %}
+          <p>This run stopped before it finished (the server was stopped or restarted), but the agent had already written some events.</p>
+          <form method="post" action="{{ url_for('finish', run_id=job.run_id) }}">
+            <button type="submit">Build calendar from what it wrote</button>
+          </form>
+        {% elif job.status == "stopped" %}
+          <p>The server restarted before this run finished. Upload the syllabus again.</p>
+        {% else %}
+          <p>The agent didn't produce any events.</p>
+          {% if job.error %}
+            <p class="detail">{{ job.error }}</p>
+          {% elif job.row %}
+            <p class="detail">{{ job.row.exit_status or "no exit status" }}{% if job.row.validation_errors %} · {{ job.row.validation_errors }}{% endif %}</p>
+          {% endif %}
+          <p>If you use a local model, check that Ollama is running, then upload again.</p>
+        {% endif %}
+      </div>
+
+    {% else %}
+      <div class="downloads">
+        <a class="button" href="{{ url_for('download', run_id=job.run_id, name='out.ics') }}">Download calendar (.ics)</a>
+        <a class="link" href="{{ url_for('download', run_id=job.run_id, name='events.json') }}">events.json</a>
+        <span class="summary">{{ events|length }} events{% if review %} · <a href="#check">{{ review|length }} to check</a>{% endif %}</span>
+      </div>
+
+      <section class="card term" aria-labelledby="term-title">
+        <div class="term-head">
+          <h2 id="term-title">Your term</h2>
+          <div class="month-nav" hidden>
+            <button type="button" class="nav-btn" data-step="-1" aria-label="Previous month">←</button>
+            <button type="button" class="nav-btn" data-step="1" aria-label="Next month">→</button>
+          </div>
+        </div>
+        {% for month in months %}
+          <div class="month-page" id="month-{{ month.id }}" data-month="{{ month.id }}">
+            <h3 class="month-title">{{ month.name }} <span>{{ month.year }}</span></h3>
+            <div class="cal" role="table" aria-label="{{ month.name }} {{ month.year }}">
+              <div class="cal-row cal-dow" role="row">
+                {% for d in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] %}<span role="columnheader">{{ d }}</span>{% endfor %}
+              </div>
+              {% for week in month.weeks %}
+                <div class="cal-row" role="row">
+                  {% for cell in week %}
+                    <div role="cell" class="cal-day{{ ' out' if not cell.in_month }}{{ ' outside-term' if cell.in_month and not cell.in_term }}{{ ' off' if cell.off }}{{ ' today' if cell.day == today }}">
+                      {% if cell.in_month %}
+                        <span class="cal-num">{{ cell.day.day }}</span>
+                        {% for ev in cell.events %}
+                          <span class="chip type-{{ ev.type }}{{ ' low' if ev.confidence == 'low' }}" title="{{ ev.title }}{% if ev.start %} · {{ ev.start }}{% if ev.end %}–{{ ev.end }}{% endif %}{% endif %}{% if ev.confidence == 'low' %} · check this date{% endif %}">
+                            {%- if ev.start and ev.type in ("class", "office_hours") %}<b>{{ ev.start }}</b> {% endif %}{{ ev.title -}}
+                          </span>
+                        {% endfor %}
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+        <ul class="legend">
+          <li><span class="chip type-exam">exam</span></li>
+          <li><span class="chip type-assignment">due</span></li>
+          <li><span class="chip type-class">class</span></li>
+          <li><span class="chip type-other">no class / other</span></li>
+          <li><span class="chip type-assignment low">dashed = check this date</span></li>
+        </ul>
+      </section>
+
+      {% if review %}
+        <section class="card review" id="check">
+          <h2><span class="hl-text">Check these</span></h2>
+          <p>SyCal wasn't sure about these. They show up as <strong>[VERIFY]</strong> in your calendar until you fix or confirm the date.</p>
+          <form method="post" action="{{ url_for('confirm', run_id=job.run_id) }}">
+            <ul class="review-list">
+              {% for item in review %}
+                <li>
+                  <div class="review-what">
+                    <strong>{{ item.ev.title }}</strong> <span class="tag">{{ item.ev.type|replace("_", " ") }}</span>
+                    {% if item.estimate %}<span class="tag tag-estimate">estimated</span>{% endif %}
+                    <p class="source">{{ item.ev.citation }}</p>
+                    {% if item.estimate %}<p class="hint">The syllabus doesn't give a date; this is SyCal's best guess.</p>{% endif %}
+                  </div>
+                  <div class="review-fix">
+                    <input type="date" name="date-{{ item.n }}" value="{{ item.ev.date }}" min="{{ job.term_start }}" max="{{ job.term_end }}" aria-label="Date for {{ item.ev.title }}">
+                    <label class="check"><input type="checkbox" name="ok-{{ item.n }}" value="1"> Date is right</label>
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+            <button type="submit">Save dates</button>
+          </form>
+        </section>
+      {% endif %}
+
+      <section class="card">
+        <h2>All events</h2>
+        <div class="table-wrap">
+          <table class="events">
+            <thead><tr><th>Date</th><th>Time</th><th>Event</th><th>Repeats</th></tr></thead>
+            <tbody>
+              {% for item in events %}
+                <tr class="{{ 'low' if item.ev.confidence == 'low' }}">
+                  <td class="nowrap">{{ item.ev.date }}</td>
+                  <td class="nowrap">{{ item.ev.start or "all day" }}{% if item.ev.end %}–{{ item.ev.end }}{% endif %}</td>
+                  <td>
+                    {{ item.ev.title }} <span class="tag">{{ item.ev.type|replace("_", " ") }}</span>
+                    {% if item.ev.confidence == "low" %}<span class="tag tag-verify">verify</span>{% endif %}
+                  </td>
+                  <td>{{ item.repeats }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  </main>
+{% endblock %}
+
+{% block scripts %}
+  {% if months %}
+  <script>
+    // One month at a time, starting on this month if it's in the term. Without JS every month shows.
+    const pages = [...document.querySelectorAll(".month-page")];
+    const thisMonth = "{{ today.strftime('%Y-%m') }}";
+    let current = Math.max(0, pages.findIndex((p) => p.dataset.month === thisMonth));
+    const nav = document.querySelector(".month-nav");
+    const [prev, next] = nav.querySelectorAll("button");
+    function show(i) {
+      current = i;
+      pages.forEach((p, j) => (p.hidden = j !== i));
+      prev.disabled = i === 0;
+      next.disabled = i === pages.length - 1;
+    }
+    nav.hidden = false;
+    nav.addEventListener("click", (e) => {
+      const step = Number(e.target.closest("button")?.dataset.step || 0);
+      if (step) show(current + step);
+    });
+    show(current);
+  </script>
+  {% endif %}
+{% endblock %}
