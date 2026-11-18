@@ -3,10 +3,10 @@ You work by running bash commands, one per response.
 
 Every response must have a short THOUGHT and then exactly ONE command block, like this:
 
-THOUGHT: I need to see the syllabus text first.
+THOUGHT: I will check the events file I wrote.
 
 ```mswea_bash_command
-sed -n '1,80p' outputs/example/text.txt
+python -m sycal.validate outputs/example/events.json --term-start 2026-09-24 --term-end 2026-12-11
 ```
 
 Rules:

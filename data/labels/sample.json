@@ -1,0 +1,117 @@
+{
+  "syllabus": "sample.html",
+  "term_start": "2026-09-24",
+  "term_end": "2026-12-11",
+  "events": [
+    {
+      "course": "CS 999",
+      "title": "Lecture",
+      "type": "class",
+      "date": "2026-09-24",
+      "start": "14:00",
+      "end": "15:20",
+      "recurrence": "FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261203",
+      "citation": "p.1: 'Lectures: Tuesdays and Thursdays, 2:00–3:20 PM, Bourns A265.'",
+      "confidence": "high"
+    },
+    {
+      "course": "CS 999",
+      "title": "Office Hours",
+      "type": "office_hours",
+      "date": "2026-09-30",
+      "start": "10:00",
+      "end": "11:00",
+      "recurrence": "FREQ=WEEKLY;BYDAY=WE;UNTIL=20261202",
+      "citation": "p.1: 'Office hours: Wednesdays 10–11 AM in WCH 110, starting Sept 30 through Dec 2.'",
+      "confidence": "high"
+    },
+    {
+      "course": "CS 999",
+      "title": "HW1 due",
+      "type": "assignment",
+      "date": "2026-10-02",
+      "start": "23:59",
+      "end": null,
+      "recurrence": null,
+      "citation": "p.1: 'HW1 due Fri 10/2 at 11:59 PM'",
+      "confidence": "high"
+    },
+    {
+      "course": "CS 999",
+      "title": "HW2 due",
+      "type": "assignment",
+      "date": "2026-10-16",
+      "start": "23:59",
+      "end": null,
+      "recurrence": null,
+      "citation": "p.1: 'HW2 due Fri 10/16 at 11:59 PM'",
+      "confidence": "high"
+    },
+    {
+      "course": "CS 999",
+      "title": "Midterm",
+      "type": "exam",
+      "date": "2026-10-29",
+      "start": "14:00",
+      "end": "15:20",
+      "recurrence": null,
+      "citation": "p.1: 'Midterm in class, Week 6 Thursday'",
+      "confidence": "high"
+    },
+    {
+      "course": "CS 999",
+      "title": "HW3 due",
+      "type": "assignment",
+      "date": "2026-11-06",
+      "start": "23:59",
+      "end": null,
+      "recurrence": null,
+      "citation": "p.1: 'HW3 due Friday, November 6, 11:59 PM'",
+      "confidence": "high"
+    },
+    {
+      "course": "CS 999",
+      "title": "Project proposal due",
+      "type": "assignment",
+      "date": "2026-11-16",
+      "start": "17:00",
+      "end": null,
+      "recurrence": null,
+      "citation": "p.1: 'Project proposal due Mon 11/16 by 5 PM'",
+      "confidence": "high"
+    },
+    {
+      "course": "CS 999",
+      "title": "No class (Thanksgiving)",
+      "type": "other",
+      "date": "2026-11-26",
+      "start": null,
+      "end": null,
+      "recurrence": null,
+      "citation": "p.1: 'No class Thursday 11/26 (Thanksgiving)'",
+      "confidence": "high"
+    },
+    {
+      "course": "CS 999",
+      "title": "Final project due",
+      "type": "assignment",
+      "date": "2026-12-04",
+      "start": "23:59",
+      "end": null,
+      "recurrence": null,
+      "citation": "p.1: 'Final project due Friday 12/4 at 11:59 PM'",
+      "confidence": "high"
+    },
+    {
+      "course": "CS 999",
+      "title": "Final Exam",
+      "type": "exam",
+      "date": "2026-12-09",
+      "start": "08:00",
+      "end": "11:00",
+      "recurrence": null,
+      "citation": "p.1: 'Final Exam: Wednesday, December 9, 8:00–11:00 AM, location TBA.'",
+      "confidence": "high"
+    }
+  ]
+}

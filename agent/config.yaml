@@ -8,7 +8,7 @@ prompts:
 agent:
   step_limit: 30
   cost_limit: 0.50              # USD per syllabus run (local models report $0)
-  wall_time_limit_seconds: 900
+  wall_time_limit_seconds: 300  # a healthy local run finishes well inside this; stops stuck runs early
   max_consecutive_format_errors: 3
 
 modes:
@@ -19,6 +19,7 @@ modes:
 
 environment:
   timeout: 60
+  max_failed_checks: 2          # stop after this many failed validator runs, or one repeat of the same errors
   env:
     PAGER: cat
     PYTHONUTF8: "1"

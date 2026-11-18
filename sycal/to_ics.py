@@ -21,10 +21,17 @@ from icalendar import Calendar
 from icalendar import Event as VEvent
 from icalendar import vRecur
 
-from sycal.schema import Event, EventFile, load_event_file
+from sycal.schema import Event, EventFile, dump_event_file, load_event_file
+from sycal.validate import states_date
 
 TIMEZONE = ZoneInfo("America/Los_Angeles")
 VERIFY_PREFIX = "[VERIFY] "
+ESTIMATE_NOTE = "Date is an estimate: the syllabus doesn't give one."
+
+
+def is_estimate(ev: Event) -> bool:
+    """A one-off event the syllabus gives no date for; the student still has to confirm it."""
+    return ev.confidence == "low" and not ev.recurrence and not states_date(ev.citation)
 
 
 def _uid(ev: Event) -> str:
@@ -46,7 +53,7 @@ def to_calendar(event_file: EventFile) -> Calendar:
         vevent.add("dtstamp", datetime.now(TIMEZONE))
         summary = f"{ev.course}: {ev.title}"
         vevent.add("summary", (VERIFY_PREFIX if ev.confidence == "low" else "") + summary)
-        vevent.add("description", f"Source: {ev.citation}")
+        vevent.add("description", (ESTIMATE_NOTE + "\n" if is_estimate(ev) else "") + f"Source: {ev.citation}")
         vevent.add("categories", [ev.type])
         if ev.start is None:
             vevent.add("dtstart", ev.day)
@@ -66,14 +73,24 @@ def to_calendar(event_file: EventFile) -> Calendar:
 
 
 def review_markdown(event_file: EventFile) -> str:
-    low = [ev for ev in event_file.events if ev.confidence == "low"]
+    low = [(n, ev) for n, ev in enumerate(event_file.events, 1) if ev.confidence == "low"]
     lines = [f"# Needs review: {event_file.syllabus}", ""]
     if not low:
         lines.append("No low-confidence events.")
-    for ev in low:
+    for n, ev in low:
         when = ev.date + (f" {ev.start}" if ev.start else "") + (f"-{ev.end}" if ev.end else "")
-        lines.append(f"- [ ] **{ev.title}** ({ev.type}) on {when}  \n  Source: {ev.citation}")
+        note = f"  \n  {ESTIMATE_NOTE}" if is_estimate(ev) else ""
+        lines.append(f"- [ ] event {n}: **{ev.title}** ({ev.type}) on {when}{note}  \n  Source: {ev.citation}")
+    if low:
+        lines += ["", "Correct or confirm a date with: python -m sycal.confirm <this folder> --set <event>=YYYY-MM-DD"]
     return "\n".join(lines) + "\n"
+
+
+def write_outputs(event_file: EventFile, out_dir: Path) -> None:
+    """events.json, out.ics and review.md for one run folder."""
+    dump_event_file(event_file, out_dir / "events.json")
+    (out_dir / "out.ics").write_bytes(to_calendar(event_file).to_ical())
+    (out_dir / "review.md").write_text(review_markdown(event_file), encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:

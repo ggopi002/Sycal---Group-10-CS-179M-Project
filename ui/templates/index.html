@@ -1,19 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SyCal.ai</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Caveat:wght@600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-  <header class="topbar">
-    <span class="brand">SyCal.ai</span>
-  </header>
+{% extends "base.html" %}
 
+{% block main %}
   <main class="page">
     <section class="intro">
       <h1>Your whole quarter, on your calendar.</h1>
@@ -31,8 +18,36 @@
           <span class="picker-button">Choose file</span>
           <span class="picker-name" id="file-name">PDF or HTML, up to 10 MB</span>
         </label>
+        <div class="fields">
+          <label class="field">
+            <span>First day of term</span>
+            <input type="date" name="term_start" required>
+          </label>
+          <label class="field">
+            <span>Last day, incl. finals</span>
+            <input type="date" name="term_end" required>
+          </label>
+        </div>
+        <label class="field">
+          <span>Course <em>(optional, read from the syllabus if blank)</em></span>
+          <input type="text" name="course" placeholder="e.g. CS 180">
+        </label>
         <button type="submit">Upload syllabus</button>
       </form>
+
+      {% if recent %}
+        <section class="recent">
+          <h2>Recent</h2>
+          <ul>
+            {% for job in recent %}
+              <li>
+                <a href="{{ url_for('results', run_id=job.run_id) }}">{{ job.course or job.name }}</a>
+                <span class="status status-{{ job.status }}">{{ job.status }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
     </section>
 
     <!-- Decorative: a page from a student planner -->
@@ -53,9 +68,9 @@
       <p class="note note-hw">hw due</p>
     </aside>
   </main>
+{% endblock %}
 
-  <footer class="footer">CS 179M, Group 10</footer>
-
+{% block scripts %}
   <script>
     // Show the chosen file's name next to the button.
     document.getElementById("syllabus").addEventListener("change", (e) => {
@@ -63,5 +78,4 @@
       document.getElementById("file-name").textContent = file ? file.name : "PDF or HTML, up to 10 MB";
     });
   </script>
-</body>
-</html>
+{% endblock %}

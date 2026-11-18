@@ -41,7 +41,7 @@ agree on the change with the people who depend on it.
 
 | Week | Tasks |
 |------|-------|
-| 4 | - [x] Skeleton: agent loop on mini-swe-agent, bash environment, model profiles, ledger, tests<br>- [ ] Smoke test qwen3:4b and gemma4:e2b on `sample.html`; fix prompt problems<br>- [ ] Update NVIDIA driver so Ollama can use the GPU (currently CPU-only, see `models.yaml`) |
+| 4 | - [x] Skeleton: agent loop on mini-swe-agent, bash environment, model profiles, ledger, tests<br>- [ ] Smoke test qwen3:4b and gemma4:e2b on `sample.html`; fix prompt problems<br>- [ ] Update NVIDIA driver so Ollama can use the GPU (currently CPU-only with `SYCAL_NUM_GPU=0`) |
 | 5 | - [ ] Baseline runs (both models, `baseline` mode) on Rehan's first labeled syllabi<br>- [ ] Baseline numbers for the midterm presentation; progress report 1 |
 | 6–7 | - [ ] Tune the `full` mode retry loop with Guru's validator messages<br>- [ ] Prompting for relative dates ("Week 6 Thursday") and confidence calibration<br>- [ ] Fallback if small models can't follow the bash format: fixed pipeline where the LLM only writes JSON<br>- [ ] Progress report 2 |
 | 8 | - [ ] Full experiment grid (models × modes × all syllabi); stronger-model comparison (gpt-6-luna or NRP)<br>- [ ] Budget summary from the ledger |
@@ -120,8 +120,13 @@ be scored until the first labels exist.
 ## Setup
 
 ```bash
+# Requires Python 3.12+. Windows:
 python -m venv .venv
-.venv/Scripts/activate            # macOS/Linux: source .venv/bin/activate
+.venv/Scripts/activate
+# macOS/Linux:
+python3 -m venv .venv
+source .venv/bin/activate
+
 pip install -e ".[dev]"
 python -m pytest
 # Local models (https://ollama.com):
@@ -131,3 +136,5 @@ python -m agent.run --experiment agent/experiments/smoke.yaml
 ```
 
 On Windows the agent runs commands through Git Bash; set `SYCAL_BASH` if it isn't at the default path.
+If Ollama can't use your GPU, set `SYCAL_NUM_GPU=0` to run local models on the CPU.
+The real PDF extractor will use `pdftotext` if it's installed (macOS: `brew install poppler`).

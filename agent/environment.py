@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from minisweagent.environments.local import LocalEnvironment
+from minisweagent.exceptions import Submitted
 
 _WINDOWS_GIT_BASH = (
     Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe",
@@ -34,9 +35,13 @@ def find_bash() -> str:
 
 
 class BashEnvironment(LocalEnvironment):
-    def __init__(self, **kwargs):
+    def __init__(self, *, max_failed_checks: int = 2, **kwargs):
         super().__init__(**kwargs)
         self.bash = find_bash()
+        # Retry gate: each fix attempt is a full rewrite of events.json (30-75 s on a local model),
+        # and a model that couldn't fix an error once rarely does on the next try.
+        self.max_failed_checks = max_failed_checks
+        self.failed_checks: list[str] = []
 
     def execute(self, action: dict, cwd: str = "", *, timeout: int | None = None) -> dict[str, Any]:
         command = action.get("command", "")
@@ -62,4 +67,24 @@ class BashEnvironment(LocalEnvironment):
                 "extra": {"exception_type": "TimeoutExpired"},
             }
         self._check_finished(output)
+        self._check_retries(command, output)
         return output
+
+    def _check_retries(self, command: str, output: dict) -> None:
+        """End the run (finalize keeps the good events and flags the rest) when the validator
+        fails with the same errors as last time, or has failed max_failed_checks times."""
+        text = output.get("output", "")
+        if "sycal.validate" not in command or not text.lstrip().startswith("FAIL:"):
+            return
+        errors = "\n".join(line for line in text.splitlines() if not line.startswith("auto-fixed"))
+        repeated = bool(self.failed_checks) and errors == self.failed_checks[-1]
+        self.failed_checks.append(errors)
+        if repeated or len(self.failed_checks) >= self.max_failed_checks:
+            reason = "same errors as the last check" if repeated else f"{len(self.failed_checks)} failed checks"
+            raise Submitted(
+                {
+                    "role": "exit",
+                    "content": f"Stopped retrying ({reason}); events with errors are flagged for review.",
+                    "extra": {"exit_status": "RetryLimit", "submission": ""},
+                }
+            )
