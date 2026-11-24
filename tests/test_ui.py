@@ -95,3 +95,28 @@ def test_stopped_run_can_still_become_a_calendar(client, tmp_path, monkeypatch, 
     assert "Build calendar from what it wrote" in client.get(f"/runs/{run_id}").get_data(as_text=True)
     page = client.post(f"/runs/{run_id}/finish", follow_redirects=True).get_data(as_text=True)
     assert "Your term" in page and "Download calendar" in page
+
+
+def test_old_runs_can_be_deleted(client, tmp_path):
+    run_id = _upload(client).headers["Location"].rsplit("/", 1)[1]
+    assert "Delete this run" in client.get(f"/runs/{run_id}").get_data(as_text=True)
+
+    page = client.post(f"/runs/{run_id}/delete", follow_redirects=True).get_data(as_text=True)
+    assert "Deleted" in page
+    assert not (tmp_path / run_id).exists() and not (tmp_path / "uploads" / run_id).exists()
+    assert client.get(f"/runs/{run_id}").status_code == 404
+
+    _upload(client), _upload(client)
+    assert "Deleted 2 old run(s)" in client.post("/runs/clear", follow_redirects=True).get_data(as_text=True)
+    assert not list(tmp_path.glob("ui-*"))
+
+
+def test_a_run_waits_for_its_turn(client):
+    with ui._turn:  # another syllabus is being read
+        ui._running.add("ui-20261123-000000")
+        ui._save_job("ui-20261123-000000", {"run_id": "ui-20261123-000000", "name": "a.pdf", "course": "",
+                                            "file": "a.pdf", "term_start": "2026-09-24", "term_end": "2026-12-11",
+                                            "model": ui.MODEL, "status": "queued"})  # fmt: skip
+        page = client.get("/runs/ui-20261123-000000").get_data(as_text=True)
+        ui._running.discard("ui-20261123-000000")
+    assert "waiting its turn" in page

@@ -21,13 +21,15 @@ from icalendar import Calendar
 from icalendar import Event as VEvent
 from icalendar import vRecur
 
-from sycal.holidays import holiday_dates, skipped_holidays
+from sycal.holidays import finals_week_start, holiday_dates, skipped_holidays
 from sycal.schema import Event, EventFile, dump_event_file, load_event_file
 from sycal.validate import states_date
 
 TIMEZONE = ZoneInfo("America/Los_Angeles")
 VERIFY_PREFIX = "[VERIFY] "
+ESTIMATE_SUFFIX = " (estimated)"
 ESTIMATE_NOTE = "Date is an estimate: the syllabus doesn't give one."
+FINALS_TITLE = "Finals week"
 
 
 def is_estimate(ev: Event) -> bool:
@@ -53,7 +55,8 @@ def to_calendar(event_file: EventFile) -> Calendar:
         vevent = VEvent()
         vevent.add("uid", _uid(ev))
         vevent.add("dtstamp", datetime.now(TIMEZONE))
-        summary = f"{ev.course}: {ev.title}"
+        # Confirming the date sets confidence high, which drops both the tag and "(estimated)".
+        summary = f"{ev.course}: {ev.title}" + (ESTIMATE_SUFFIX if is_estimate(ev) else "")
         vevent.add("summary", (VERIFY_PREFIX if ev.confidence == "low" else "") + summary)
         vevent.add("description", (ESTIMATE_NOTE + "\n" if is_estimate(ev) else "") + f"Source: {ev.citation}")
         vevent.add("categories", [ev.type])
@@ -73,6 +76,17 @@ def to_calendar(event_file: EventFile) -> Calendar:
             # No class on holidays: EXDATE must match each occurrence's DTSTART (date or local time).
             if skipped := skipped_holidays(ev, holidays):
                 vevent.add("exdate", [_at(d, ev.start) if ev.start else d for d in skipped])
+        cal.add_component(vevent)
+    if event_file.term_start and event_file.term_end and (finals := finals_week_start(event_file.term_start, event_file.term_end)):
+        course = next((ev.course for ev in event_file.events if ev.course), "")
+        vevent = VEvent()
+        vevent.add("uid", hashlib.sha1(f"finals|{course}|{finals}".encode()).hexdigest()[:16] + "@sycal")
+        vevent.add("dtstamp", datetime.now(TIMEZONE))
+        vevent.add("summary", f"{course}: {FINALS_TITLE}" if course else FINALS_TITLE)
+        vevent.add("description", "No regular classes this week; see your final exam time.")
+        vevent.add("categories", ["other"])
+        vevent.add("dtstart", finals)
+        vevent.add("dtend", date.fromisoformat(event_file.term_end) + timedelta(days=1))
         cal.add_component(vevent)
     return cal
 

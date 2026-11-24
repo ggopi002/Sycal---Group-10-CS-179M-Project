@@ -209,9 +209,12 @@ def first_day(term_start: str, days: list[int]) -> date:
 
 
 def meeting_events(text: str, course: str, term_start: str, term_end: str) -> list[dict]:
-    """Every weekly meeting as an event dict in the schema's shape, repeating through the term."""
+    """Every weekly meeting as an event dict in the schema's shape, repeating until finals week."""
     course = course or guess_course(text)
-    until = date.fromisoformat(term_end).strftime("%Y%m%d")
+    end = date.fromisoformat(term_end)
+    finals = end - timedelta(days=end.weekday())  # same rule as holidays.finals_week_start
+    last = finals - timedelta(days=1) if finals - date.fromisoformat(term_start) >= timedelta(weeks=4) else end
+    until = last.strftime("%Y%m%d")
     return [
         {
             "course": course,
@@ -225,6 +228,29 @@ def meeting_events(text: str, course: str, term_start: str, term_end: str) -> li
             "confidence": "high" if m.sure else "low",
         }
         for m in find_meetings(text)
+    ]
+
+
+def _byday(rule: object) -> set[str]:
+    m = re.search(r"BYDAY=([^;]*)", str(rule or ""), re.I)
+    return {d.strip().upper()[-2:] for d in m.group(1).split(",")} if m else set()
+
+
+def missing_meetings(raw_events: list, text: str, term_start: str, term_end: str, course: str = "") -> list[dict]:
+    """Weekly meetings in the text that no recurring event covers (same start time and a shared
+    day). Adding them in code means a model that skips the meeting line ("Class TTh 9:30-10:50am")
+    still puts every lecture on the calendar."""
+    covered = {
+        (day, ev.get("start"))
+        for ev in raw_events
+        if isinstance(ev, dict) and ev.get("recurrence")
+        for day in _byday(ev["recurrence"])
+    }
+    course = course or next((ev["course"] for ev in raw_events if isinstance(ev, dict) and ev.get("course")), "")
+    return [
+        ev
+        for ev in meeting_events(text, course, term_start, term_end)
+        if not any((day, ev["start"]) in covered for day in _byday(ev["recurrence"]))
     ]
 
 

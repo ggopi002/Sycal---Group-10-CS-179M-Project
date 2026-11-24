@@ -6,9 +6,20 @@ from sycal.to_ics import review_markdown, to_calendar
 def test_calendar_parses_and_keeps_recurrence(sample_file):
     cal = Calendar.from_ical(to_calendar(sample_file).to_ical())
     events = cal.walk("VEVENT")
-    assert len(events) == len(sample_file.events)
+    assert len(events) == len(sample_file.events) + 1  # + the finals week banner
     lecture = events[0]
     assert "BYDAY=TU,TH" in lecture["RRULE"].to_ical().decode()
+    finals = events[-1]
+    assert str(finals["SUMMARY"]) == "CS 999: Finals week"
+    assert (finals["DTSTART"].dt.isoformat(), finals["DTEND"].dt.isoformat()) == ("2026-12-07", "2026-12-12")
+
+
+def test_estimated_label_goes_away_once_confirmed(sample_file):
+    ev = sample_file.events[2]
+    ev.citation, ev.confidence = "p.2: 'There will be 2 homework assignments.'", "low"
+    assert str(to_calendar(sample_file).walk("VEVENT")[2]["SUMMARY"]) == "[VERIFY] CS 999: HW1 due (estimated)"
+    ev.confidence = "high"  # what python -m sycal.confirm / "Save dates" does
+    assert str(to_calendar(sample_file).walk("VEVENT")[2]["SUMMARY"]) == "CS 999: HW1 due"
 
 
 def test_low_confidence_gets_verify_tag(sample_file):

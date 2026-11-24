@@ -3,7 +3,7 @@
 # Local Ollama models cost $0, so cost tracking errors are ignored for them.
 # If Ollama can't use your GPU, set SYCAL_NUM_GPU=0 to force CPU on your machine (see agent/run.py).
 # max_tokens caps one reply (litellm sends it to Ollama as num_predict). It must fit the longest
-# legitimate reply, the events.json heredoc (~110 tokens per event), but stops a runaway reply
+# legitimate reply, the events.json heredoc (~110 tokens per event, ~30 events), but stops a runaway reply
 # in about a minute instead of letting it hit Ollama's repeat limit after several.
 
 qwen-local:
@@ -14,7 +14,7 @@ qwen-local:
     api_base: http://localhost:11434
     temperature: 0
     num_ctx: 16384
-    max_tokens: 2500
+    max_tokens: 4000
     timeout: 180  # seconds per model call; a stalled Ollama fails the run instead of hanging it
     think: false  # qwen3:4b still reasons in its reply text with this off; see qwen25-local
     drop_params: true
@@ -28,7 +28,7 @@ qwen25-local:
     api_base: http://localhost:11434
     temperature: 0
     num_ctx: 16384
-    max_tokens: 2500
+    max_tokens: 4000
     timeout: 180  # seconds per model call; a stalled Ollama fails the run instead of hanging it
     drop_params: true
 
@@ -40,7 +40,7 @@ gemma-local:
     api_base: http://localhost:11434
     temperature: 0
     num_ctx: 16384
-    max_tokens: 2500
+    max_tokens: 4000
     timeout: 180  # seconds per model call; a stalled Ollama fails the run instead of hanging it
     drop_params: true
 

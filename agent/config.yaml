@@ -8,7 +8,7 @@ prompts:
 agent:
   step_limit: 30
   cost_limit: 0.50              # USD per syllabus run (local models report $0)
-  wall_time_limit_seconds: 300  # a healthy local run finishes well inside this; stops stuck runs early
+  wall_time_limit_seconds: 600  # a 7B model on a laptop needs 1-2 min per full events.json; stops stuck runs
   max_consecutive_format_errors: 3
 
 modes:

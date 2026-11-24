@@ -122,6 +122,21 @@ button:focus-visible { outline: 3px solid var(--pen); outline-offset: 2px; }
 .recent li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
 
 .status { font-size: 13px; font-weight: 600; color: var(--pencil); }
+.recent-side { display: flex; align-items: center; gap: 10px; }
+.recent-side form, .delete-run { margin: 0; }
+.link-button {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--pencil);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link-button:hover { background: none; color: var(--red-pen); }
+.clear-runs { margin-top: 10px; }
+.delete-run { margin-top: 24px; text-align: right; }
 .status-done { color: #2f8a57; }
 .status-error, .status-stopped { color: var(--red-pen); }
 
@@ -311,6 +326,19 @@ button:focus-visible { outline: 3px solid var(--pen); outline-offset: 2px; }
 .chip.type-other { color: var(--red-pen); border-color: var(--red-pen); }
 .chip.low { border-style: dashed; border-color: currentColor; }
 .chip.type-exam.low { border-color: var(--ink); }
+.chip .est { font-style: italic; font-weight: 400; color: var(--pen); }
+
+/* finals week: no regular classes, just the label and the final */
+.cal-day.finals { background: #f4f6fb; }
+.finals-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border-bottom: 2px solid var(--highlighter);
+  align-self: flex-start;
+}
 
 .legend { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 16px 0 0; padding: 0; }
 .legend .chip { display: inline-block; }

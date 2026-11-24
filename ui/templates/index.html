@@ -42,10 +42,22 @@
             {% for job in recent %}
               <li>
                 <a href="{{ url_for('results', run_id=job.run_id) }}">{{ job.course or job.name }}</a>
-                <span class="status status-{{ job.status }}">{{ job.status }}</span>
+                <span class="recent-side">
+                  <span class="status status-{{ job.status }}">{{ "waiting" if job.status == "queued" else job.status }}</span>
+                  {% if job.status not in ("running", "queued") %}
+                    <form method="post" action="{{ url_for('delete', run_id=job.run_id) }}"
+                          onsubmit="return confirm('Delete this run?')">
+                      <button type="submit" class="link-button" aria-label="Delete {{ job.course or job.name }}">delete</button>
+                    </form>
+                  {% endif %}
+                </span>
               </li>
             {% endfor %}
           </ul>
+          <form method="post" action="{{ url_for('clear') }}"
+                onsubmit="return confirm('Delete every finished run and its uploaded syllabus?')">
+            <button type="submit" class="link-button clear-runs">Delete all old runs</button>
+          </form>
         </section>
       {% endif %}
     </section>

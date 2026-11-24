@@ -14,6 +14,7 @@ import json
 import calendar
 import os
 import re
+import shutil
 import threading
 from collections import defaultdict
 from datetime import date, datetime, time
@@ -25,7 +26,7 @@ from werkzeug.utils import secure_filename
 
 from agent import run
 from sycal.confirm import confirm_dates
-from sycal.holidays import holiday_dates, skipped_holidays
+from sycal.holidays import holiday_dates, in_finals_week, skipped_holidays
 from sycal.schema import Event, EventFile, load_event_file
 from sycal.to_ics import is_estimate
 
@@ -42,7 +43,10 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB max upload
 app.secret_key = "sycal-dev-only"  # needed for flash messages
 
-_running: set[str] = set()  # run ids whose agent thread is still going (lost on restart)
+_running: set[str] = set()  # run ids whose agent thread is still going or waiting (lost on restart)
+# Ollama answers one request at a time, so two runs at once only slow each other into their
+# time limits. Later uploads wait here ("queued") and their clock starts when their turn comes.
+_turn = threading.Lock()
 
 
 def _job_path(run_id: str) -> Path:
@@ -53,7 +57,7 @@ def _load_job(run_id: str) -> dict:
     if not _RUN_ID_RE.match(run_id) or not _job_path(run_id).exists():
         abort(404)
     job = json.loads(_job_path(run_id).read_text(encoding="utf-8"))
-    if job["status"] == "running" and run_id not in _running:
+    if job["status"] in ("running", "queued") and run_id not in _running:
         job["status"] = "stopped"  # the server restarted mid-run
     return job
 
@@ -70,8 +74,11 @@ def _out_dir(job: dict) -> Path:
 def _run_agent(run_id: str, job: dict) -> None:
     syllabus = run.Syllabus(job["file"], job["course"], job["term_start"], job["term_end"])
     try:
-        job["row"] = run.run_one(syllabus, job["model"], MODE, run_id)
-        job["status"] = "done"
+        with _turn:
+            job["status"], job["started"] = "running", datetime.now().isoformat(timespec="seconds")
+            _save_job(run_id, job)
+            job["row"] = run.run_one(syllabus, job["model"], MODE, run_id)
+            job["status"] = "done"
     except Exception as e:  # keep the page useful: show what went wrong instead of spinning forever
         job["status"], job["error"] = "error", f"{type(e).__name__}: {e}"[:300]
     finally:
@@ -142,6 +149,7 @@ def _months(event_file: EventFile) -> list[dict]:
                     "in_month": day.month == month,
                     "in_term": start <= day <= end,
                     "off": any(ev.type == "other" and not ev.start for ev in evs),  # holiday / no class
+                    "finals": in_finals_week(day, event_file.term_start, event_file.term_end),
                     "events": evs,
                 })  # fmt: skip
             weeks.append(days)
@@ -217,7 +225,7 @@ def upload():
         "term_start": term_start,
         "term_end": term_end,
         "model": MODEL,
-        "status": "running",
+        "status": "queued",
         "started": datetime.now().isoformat(timespec="seconds"),
     }
     _save_job(run_id, job)
@@ -248,6 +256,7 @@ def results(run_id: str):
         review=review,
         months=months,
         today=date.today(),
+        is_estimate=is_estimate,
         progress=_progress(job) if job["status"] == "running" else [],
         elapsed=int((datetime.now() - started).total_seconds()) if started else 0,
         salvageable=salvageable,
@@ -297,6 +306,34 @@ def confirm(run_id: str):
     return redirect(url_for("results", run_id=run_id))
 
 
+def _delete_run(run_id: str) -> None:
+    shutil.rmtree(run.OUTPUTS_DIR / run_id, ignore_errors=True)
+    shutil.rmtree(UPLOAD_DIR / run_id, ignore_errors=True)
+
+
+@app.post("/runs/<run_id>/delete")
+def delete(run_id: str):
+    """Remove a run's results and its uploaded syllabus (the ledger row stays, for the experiments)."""
+    job = _load_job(run_id)  # also rejects a run id that isn't one of ours
+    if run_id in _running:
+        flash("This syllabus is still being read; delete it after it finishes.", "error")
+        return redirect(url_for("results", run_id=run_id))
+    _delete_run(run_id)
+    flash(f"Deleted {job['course'] or job['name']}.", "success")
+    return redirect(url_for("home"))
+
+
+@app.post("/runs/clear")
+def clear():
+    """Delete every finished or stopped run (not ones still going)."""
+    old = [p.parent.name for p in run.OUTPUTS_DIR.glob("ui-*/job.json") if p.parent.name not in _running]
+    for run_id in old:
+        if _RUN_ID_RE.match(run_id):
+            _delete_run(run_id)
+    flash(f"Deleted {len(old)} old run(s).", "success")
+    return redirect(url_for("home"))
+
+
 @app.get("/runs/<run_id>/<name>")
 def download(run_id: str, name: str):
     job = _load_job(run_id)
@@ -307,4 +344,5 @@ def download(run_id: str, name: str):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # No auto-reloader: it restarts the server whenever a .py file changes, which kills any run in progress.
+    app.run(debug=True, use_reloader=False)
