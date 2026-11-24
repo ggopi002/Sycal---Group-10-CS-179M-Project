@@ -33,7 +33,14 @@ from minisweagent.models import get_model
 from agent.environment import BashEnvironment
 from sycal import extract, to_ics
 from sycal.schema import EventFile, check_event, event_from_dict
-from sycal.validate import errors_by_event, format_week_table, is_grounded, repair_against_text, repair_event
+from sycal.validate import (
+    errors_by_event,
+    format_week_table,
+    is_grounded,
+    repair_against_text,
+    repair_event,
+    repair_holidays,
+)
 
 REPO = Path(__file__).resolve().parent.parent
 AGENT_DIR = REPO / "agent"
@@ -160,6 +167,7 @@ def finalize(out_dir: Path, syllabus: Syllabus) -> dict:
     for ev in raw_events:  # same repairs as `validate --fix`, so baseline and stopped runs get them too
         repair_event(ev)
         repair_against_text(ev, text or None)
+    repair_holidays(raw_events)
 
     by_event = errors_by_event(raw_events, syllabus.term_start, syllabus.term_end, text or None)
     stats["validation_errors"] = sum(len(errors) for errors in by_event.values())

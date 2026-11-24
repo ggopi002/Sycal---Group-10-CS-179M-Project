@@ -21,6 +21,7 @@ from icalendar import Calendar
 from icalendar import Event as VEvent
 from icalendar import vRecur
 
+from sycal.holidays import holiday_dates, skipped_holidays
 from sycal.schema import Event, EventFile, dump_event_file, load_event_file
 from sycal.validate import states_date
 
@@ -47,6 +48,7 @@ def to_calendar(event_file: EventFile) -> Calendar:
     cal = Calendar()
     cal.add("prodid", "-//SyCal.ai//CS 179M Group 10//EN")
     cal.add("version", "2.0")
+    holidays = holiday_dates(event_file.events)
     for ev in event_file.events:
         vevent = VEvent()
         vevent.add("uid", _uid(ev))
@@ -68,6 +70,9 @@ def to_calendar(event_file: EventFile) -> Calendar:
                 # RFC 5545: a timed DTSTART needs a UTC UNTIL; treat a bare date as end of that day locally.
                 rule["UNTIL"] = [datetime.combine(until, time(23, 59, 59), tzinfo=TIMEZONE).astimezone(UTC)]
             vevent.add("rrule", rule)
+            # No class on holidays: EXDATE must match each occurrence's DTSTART (date or local time).
+            if skipped := skipped_holidays(ev, holidays):
+                vevent.add("exdate", [_at(d, ev.start) if ev.start else d for d in skipped])
         cal.add_component(vevent)
     return cal
 

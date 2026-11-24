@@ -25,6 +25,7 @@ from werkzeug.utils import secure_filename
 
 from agent import run
 from sycal.confirm import confirm_dates
+from sycal.holidays import holiday_dates, skipped_holidays
 from sycal.schema import Event, EventFile, load_event_file
 from sycal.to_ics import is_estimate
 
@@ -120,9 +121,12 @@ def _months(event_file: EventFile) -> list[dict]:
     """One planner page per month of the term: weeks of days, each with its events."""
     start, end = date.fromisoformat(event_file.term_start), date.fromisoformat(event_file.term_end)
     by_day: dict[date, list[Event]] = defaultdict(list)
+    holidays = holiday_dates(event_file.events)
     for ev in event_file.events:
+        skipped = set(skipped_holidays(ev, holidays))  # same days the .ics leaves out (EXDATE)
         for day in _occurrences(ev, start, end):
-            by_day[day].append(ev)
+            if day not in skipped:
+                by_day[day].append(ev)
     for evs in by_day.values():
         evs.sort(key=lambda ev: ev.start or "")  # all-day items first, then by time
 

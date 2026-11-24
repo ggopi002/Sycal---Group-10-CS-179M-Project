@@ -15,6 +15,8 @@ Checks:
   * end time is after start time
   * citation quote appears in the extracted syllabus text (only with --text; with --fix a
     missing quote sets confidence low instead of failing)
+  * no one-off event on a holiday (sycal/holidays.py); with --fix an estimated date moves to the
+    next class day, and a date the syllabus gives is kept but set to low confidence
 
 Output: "OK: ..." and exit 0, or "FAIL: N error(s)" then one line per error and exit 1.
 Exit 2 means the file could not be read at all (bad JSON, wrong top-level shape).
@@ -35,6 +37,7 @@ from pathlib import Path
 
 from icalendar import vRecur
 
+from sycal.holidays import class_days, gives_date, holiday_dates, next_class_day
 from sycal.schema import check_event
 
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -189,6 +192,7 @@ def errors_by_event(
     by_event: dict[int, list[str]] = {}
     seen: dict[tuple, int] = {}
     n = len(raw_events)
+    holidays, weekdays = holiday_dates(raw_events), class_days(raw_events)
 
     for i, ev in enumerate(raw_events, 1):
         label = f"event {i} of {n}"
@@ -219,6 +223,18 @@ def errors_by_event(
             if named and day.weekday() not in named:
                 said = "/".join(WEEKDAYS[d].title() for d in sorted(named))
                 errors.append(f"{label}: date {ev['date']} is a {WEEKDAYS[day.weekday()].title()} but citation says {said}")
+            if day in holidays and ev["type"] != "other":
+                if not gives_date(ev["citation"], day):
+                    moved = next_class_day(day, holidays, named or weekdays)
+                    errors.append(
+                        f"{label}: date {ev['date']} is a no-class day ({holidays[day]}); "
+                        f"the next class day is {moved.isoformat()}, so set date to that"
+                    )
+                elif ev["confidence"] != "low":
+                    errors.append(
+                        f"{label}: date {ev['date']} is a no-class day ({holidays[day]}); if the syllabus "
+                        'really gives this date keep it but set confidence "low", otherwise fix the date'
+                    )
             if ev["confidence"] != "low" and not states_date(ev["citation"]):
                 errors.append(
                     f"{label}: citation gives no date, so {ev['date']} is a guess; if the syllabus never says when, "
@@ -370,6 +386,33 @@ def repair_against_text(ev: object, text: str | None) -> list[str]:
     return fixes
 
 
+def repair_holidays(raw_events: list) -> list[str]:
+    """Keep one-off events off no-class days, in place: an estimated date moves to the next class
+    day; a date the syllabus itself gives stays but is flagged for review. Returns what changed."""
+    holidays, weekdays = holiday_dates(raw_events), class_days(raw_events)
+    fixes = []
+    for i, ev in enumerate(raw_events, 1):
+        if check_event(ev) or ev.get("recurrence") or ev["type"] == "other":
+            continue
+        day = date.fromisoformat(ev["date"])
+        if day not in holidays:
+            continue
+        if not gives_date(ev["citation"], day):
+            moved = next_class_day(day, holidays, named_weekdays(ev["citation"]) or weekdays)
+            ev["date"], ev["confidence"] = moved.isoformat(), "low"
+            fixes.append(
+                f"auto-fixed event {i} ({ev['title']}): date {day} is a no-class day ({holidays[day]}) "
+                f"-> {moved} (next class day)"
+            )
+        elif ev["confidence"] != "low":
+            ev["confidence"] = "low"
+            fixes.append(
+                f"needs review, event {i} ({ev['title']}): {day} is a no-class day ({holidays[day]}) "
+                "but the syllabus gives that date, set confidence low"
+            )
+    return fixes
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("events", help="events.json (bare list or wrapped)")
@@ -423,6 +466,7 @@ def main(argv: list[str] | None = None) -> int:
             for i, ev in enumerate(events, 1)
             for f in repair_event(ev) + repair_against_text(ev, text)
         ]
+        fixed += repair_holidays(events)
         if text is not None:
             fixed += flag_ungrounded(events, text)
         fixed += flag_estimated(events)
