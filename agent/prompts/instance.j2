@@ -13,6 +13,13 @@ read it again. "=== page N ===" lines mark the pages.
 <syllabus_text>
 {{syllabus_text}}
 </syllabus_text>
+{%- if meetings %}
+
+Weekly meetings the parser already found. SyCal adds these to the calendar itself, so do NOT
+write them in events.json. Write every OTHER event: exams, quizzes, homework and project
+deadlines, holidays and no-class days, and any weekly meeting missing from this list.
+{{meetings}}
+{%- endif %}
 
 ## Steps
 
@@ -20,10 +27,12 @@ read it again. "=== page N ===" lines mark the pages.
    {{run_dir}}/events.json as a JSON list with ONE EVENT PER LINE and no indentation, using a heredoc:
    cat <<'EOF' > {{run_dir}}/events.json
    [
-   {"course": "CS 101", "title": "Quiz 2", "type": "exam", "date": "2026-10-14", "start": "09:00", "end": "09:50", "recurrence": null, "citation": "p.2: 'Quiz 2 - Wed 10/14 in class'", "confidence": "high"},
+   {"course": "<course>", "title": "<short name>", "type": "exam", "date": "YYYY-MM-DD", "start": "HH:MM", "end": "HH:MM", "recurrence": null, "citation": "p.N: '<exact words copied from the syllabus>'", "confidence": "high"},
    ...one line like that per event, with all nine fields...
    ]
    EOF
+   Write ALL your events in this ONE command. Never add to the file afterwards with >>: a second
+   piece makes the file invalid JSON.
 
    How to read a syllabus:
    - Class meetings come from the meeting line (e.g. "MWF 8:00-8:50", "TTh 9:30-10:50"): ONE event
@@ -31,6 +40,13 @@ read it again. "=== page N ===" lines mark the pages.
    - A schedule table of lecture topics (8.1, 8.2, "Intro", ...) is NOT a list of events. From it,
      take only exams, deadlines, and days with no class ("N/A", "no class", "holiday").
    - Each discussion/lab section is one weekly event.
+   - Meeting days are written many ways: "TTh", "T/Th", "TR", "Tu/Th", "Tuesday and Thursday",
+     "MWF", "M/W/F", "Mon-Fri". So are times: "9:30-10:50am", "2PM", "02:00 PM - 03:20 PM", "10-12".
+   - The meeting line may be labeled "Class", "Lecture", "Schedule", "Meets", "Time and Place", or
+     have no label. Every course meets; if you have no class event yet, read the top of page 1 again.
+   - Office hours that say only "See Canvas" or "by appointment" have no time: skip them.
+   - The last week of the term is finals week: weekly meetings end before it (UNTIL = the Sunday
+     before it), and only final exams go in it.
    - If the syllabus says something happens but never says when (e.g. "5 in-class quizzes"), you
      may estimate the dates: spread them over the term on class days, skipping holidays. Every
      estimated event gets confidence "low"; cite the sentence that mentions it. The student
@@ -53,14 +69,14 @@ Each event is a JSON object with exactly these fields. The values here only show
 take every event from the syllabus text above, never from this example.
 
 {
-  "course": "CS 101",
+  "course": "XYZ 000",
   "title": "Quiz 2",
   "type": "exam",
   "date": "2026-10-14",
   "start": "09:00",
   "end": "09:50",
   "recurrence": null,
-  "citation": "p.2: 'Quiz 2 - Wed 10/14 in class'",
+  "citation": "p.N: '<exact words copied from the syllabus>'",
   "confidence": "high"
 }
 
@@ -74,5 +90,6 @@ take every event from the syllabus text above, never from this example.
   BYDAY uses two-letter days: MO TU WE TH FR SA SU ("TTh" is TU,TH; "MWF" is MO,WE,FR).
   Use one event per weekly meeting pattern, not one event per week.
 - citation: "p.N: '<exact words copied from the syllabus text>'". N is from the "=== page N ===" line above it.
-  Copy the words exactly; they are checked against the text.
+  Copy the words exactly; they are checked against the text. Keep it SHORT: the few words of one
+  line that say what and when (at most about 12 words), never a whole paragraph or table row.
 - confidence: "high" if the syllabus states the date clearly, otherwise "low" (always "low" for an estimated date).

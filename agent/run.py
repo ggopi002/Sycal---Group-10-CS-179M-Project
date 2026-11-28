@@ -20,6 +20,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import shutil
 import sys
 from dataclasses import dataclass
@@ -32,8 +33,21 @@ from minisweagent.models import get_model
 
 from agent.environment import BashEnvironment
 from sycal import extract, to_ics
+from sycal.estimate import estimated_events
+from sycal.holidays import missing_holidays
+from sycal.meetings import meeting_events, missing_meetings
 from sycal.schema import EventFile, check_event, event_from_dict
-from sycal.validate import errors_by_event, format_week_table, is_grounded, repair_against_text, repair_event
+from sycal.validate import (
+    errors_by_event,
+    format_week_table,
+    is_grounded,
+    repair_against_text,
+    repair_estimated_exams,
+    repair_event,
+    repair_finals,
+    repair_holidays,
+    salvage_events,
+)
 
 REPO = Path(__file__).resolve().parent.parent
 AGENT_DIR = REPO / "agent"
@@ -55,7 +69,9 @@ class Syllabus:
 
     @property
     def stem(self) -> str:
-        return Path(self.file).stem
+        # The run folder is named after this, and the agent types that path unquoted:
+        # "CS150 Syllabus - Google Docs" would send every command to a folder that doesn't exist.
+        return re.sub(r"[^\w.-]+", "_", Path(self.file).stem).strip("_") or "syllabus"
 
     @property
     def path(self) -> Path:
@@ -144,15 +160,19 @@ def finalize(out_dir: Path, syllabus: Syllabus) -> dict:
     """
     stats = {"n_events": 0, "n_dropped": 0, "n_ungrounded": 0, "n_low": 0, "validation_errors": ""}
     events_path, text_path = out_dir / "events.json", out_dir / "text.txt"
+    # A run cut off mid-write, or a model that appended with >>, leaves broken JSON; read its
+    # event lines anyway, and let the safety nets below fill in from the syllabus text.
+    problem, raw = "", []
     if not events_path.exists():
-        stats["validation_errors"] = "no events.json"
-        return stats
-    try:
-        raw = json.loads(events_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        stats["validation_errors"] = f"invalid JSON: {e.msg}"
-        return stats
-    shutil.copy(events_path, out_dir / "events.agent.json")
+        problem = "no events.json"
+    else:
+        shutil.copy(events_path, out_dir / "events.agent.json")
+        content = events_path.read_text(encoding="utf-8")
+        try:
+            raw = json.loads(content)
+        except json.JSONDecodeError as e:
+            raw = salvage_events(content) or []
+            problem = f"invalid JSON: {e.msg}" + (f" (read {len(raw)} event lines)" if raw else "")
     raw_events = raw.get("events", []) if isinstance(raw, dict) else raw
     if not isinstance(raw_events, list):
         raw_events = []
@@ -160,9 +180,23 @@ def finalize(out_dir: Path, syllabus: Syllabus) -> dict:
     for ev in raw_events:  # same repairs as `validate --fix`, so baseline and stopped runs get them too
         repair_event(ev)
         repair_against_text(ev, text or None)
+    # Safety nets for what a small model skips: weekly meetings (most often the lecture line),
+    # holidays, and counted work like "5 in-class quizzes" (added with estimated dates).
+    if text:
+        term = (syllabus.term_start, syllabus.term_end, syllabus.course)
+        raw_events += missing_meetings(raw_events, text, *term)
+        raw_events += missing_holidays(raw_events, text, *term)
+        raw_events += estimated_events(raw_events, text, *term)
+    repair_estimated_exams(raw_events, syllabus.term_start, syllabus.term_end)
+    repair_holidays(raw_events)
+    repair_finals(raw_events, syllabus.term_start, syllabus.term_end)
+    if not raw_events:
+        stats["validation_errors"] = problem or "no events"
+        return stats
 
     by_event = errors_by_event(raw_events, syllabus.term_start, syllabus.term_end, text or None)
-    stats["validation_errors"] = sum(len(errors) for errors in by_event.values())
+    n_errors = sum(len(errors) for errors in by_event.values())
+    stats["validation_errors"] = f"{problem}; {n_errors}" if problem else n_errors
     for i, ev in enumerate(raw_events, 1):
         if check_event(ev):
             continue
@@ -181,6 +215,12 @@ def finalize(out_dir: Path, syllabus: Syllabus) -> dict:
     stats["n_events"] = len(events)
     stats["n_low"] = sum(ev.confidence == "low" for ev in events)
     return stats
+
+
+def meeting_hints(text: str, syllabus: Syllabus) -> str:
+    """One JSON line per weekly meeting the parser found, for the prompt."""
+    events = meeting_events(text, syllabus.course, syllabus.term_start, syllabus.term_end)
+    return "\n".join(json.dumps(ev, ensure_ascii=False) for ev in events)
 
 
 def run_one(syllabus: Syllabus, model_profile: str, mode: str, run_id: str, *, model=None) -> dict:
@@ -216,6 +256,7 @@ def run_one(syllabus: Syllabus, model_profile: str, mode: str, run_id: str, *, m
             term_end=syllabus.term_end,
             week_table=format_week_table(syllabus.term_start, syllabus.term_end),
             syllabus_text=text,
+            meetings=meeting_hints(text, syllabus),
             mode=mode,
         )
         exit_status = result.get("exit_status", "")

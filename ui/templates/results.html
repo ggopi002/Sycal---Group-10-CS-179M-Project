@@ -2,7 +2,7 @@
 
 {% block title %}{{ job.course or job.name }} · SyCal.ai{% endblock %}
 {% block head %}
-  {% if job.status == "running" %}<meta http-equiv="refresh" content="5">{% endif %}
+  {% if job.status in ("running", "queued") %}<meta http-equiv="refresh" content="5">{% endif %}
 {% endblock %}
 
 {% block main %}
@@ -17,7 +17,13 @@
       {% endfor %}
     {% endwith %}
 
-    {% if job.status == "running" %}
+    {% if job.status == "queued" %}
+      <div class="card working" role="status">
+        <p class="hand">waiting its turn…</p>
+        <p>Another syllabus is being read right now. This one starts as soon as it finishes; this page refreshes by itself.</p>
+      </div>
+
+    {% elif job.status == "running" %}
       <div class="card working" role="status">
         <p class="hand">reading your syllabus…</p>
         <ol class="progress">
@@ -76,12 +82,14 @@
               {% for week in month.weeks %}
                 <div class="cal-row" role="row">
                   {% for cell in week %}
-                    <div role="cell" class="cal-day{{ ' out' if not cell.in_month }}{{ ' outside-term' if cell.in_month and not cell.in_term }}{{ ' off' if cell.off }}{{ ' today' if cell.day == today }}">
+                    <div role="cell" class="cal-day{{ ' out' if not cell.in_month }}{{ ' outside-term' if cell.in_month and not cell.in_term }}{{ ' off' if cell.off }}{{ ' finals' if cell.finals and cell.in_month }}{{ ' today' if cell.day == today }}">
                       {% if cell.in_month %}
                         <span class="cal-num">{{ cell.day.day }}</span>
+                        {% if cell.finals %}<span class="finals-label">Finals week</span>{% endif %}
                         {% for ev in cell.events %}
-                          <span class="chip type-{{ ev.type }}{{ ' low' if ev.confidence == 'low' }}" title="{{ ev.title }}{% if ev.start %} · {{ ev.start }}{% if ev.end %}–{{ ev.end }}{% endif %}{% endif %}{% if ev.confidence == 'low' %} · check this date{% endif %}">
+                          <span class="chip type-{{ ev.type }}{{ ' low' if ev.confidence == 'low' }}" title="{{ ev.title }}{% if ev.start %} · {{ ev.start }}{% if ev.end %}–{{ ev.end }}{% endif %}{% endif %}{% if is_estimate(ev) %} · estimated date{% elif ev.confidence == 'low' %} · check this date{% endif %}">
                             {%- if ev.start and ev.type in ("class", "office_hours") %}<b>{{ ev.start }}</b> {% endif %}{{ ev.title -}}
+                            {%- if is_estimate(ev) %} <i class="est">estimated</i>{% endif -%}
                           </span>
                         {% endfor %}
                       {% endif %}
@@ -98,6 +106,8 @@
           <li><span class="chip type-class">class</span></li>
           <li><span class="chip type-other">no class / other</span></li>
           <li><span class="chip type-assignment low">dashed = check this date</span></li>
+          <li><span class="chip type-exam low">Quiz <i class="est">estimated</i></span></li>
+          <li><span class="finals-label">Finals week</span></li>
         </ul>
       </section>
 
@@ -139,6 +149,7 @@
                   <td class="nowrap">{{ item.ev.start or "all day" }}{% if item.ev.end %}–{{ item.ev.end }}{% endif %}</td>
                   <td>
                     {{ item.ev.title }} <span class="tag">{{ item.ev.type|replace("_", " ") }}</span>
+                    {% if item.estimate %}<span class="tag tag-estimate">estimated</span>{% endif %}
                     {% if item.ev.confidence == "low" %}<span class="tag tag-verify">verify</span>{% endif %}
                   </td>
                   <td>{{ item.repeats }}</td>
@@ -148,6 +159,13 @@
           </table>
         </div>
       </section>
+    {% endif %}
+
+    {% if job.status not in ("running", "queued") %}
+      <form class="delete-run" method="post" action="{{ url_for('delete', run_id=job.run_id) }}"
+            onsubmit="return confirm('Delete this run and its uploaded syllabus?')">
+        <button type="submit" class="link-button">Delete this run</button>
+      </form>
     {% endif %}
   </main>
 {% endblock %}

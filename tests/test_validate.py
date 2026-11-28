@@ -166,3 +166,17 @@ def test_fix_marks_estimated_dates_low(tmp_path, sample_file, capsys):
     assert main([str(path), "--fix"] + ["--term-start", sample_file.term_start, "--term-end", sample_file.term_end]) == 0
     assert "the date is an estimate" in capsys.readouterr().out
     assert json.loads(path.read_text(encoding="utf-8"))[2]["confidence"] == "low"
+
+
+def test_fix_rebuilds_a_file_appended_with_two_heredocs(tmp_path, sample_file, capsys):
+    # What qwen2.5 did on CS 150: "[...]" with cat >, then ",\n{...}\n]" again with cat >>.
+    lines = [json.dumps(ev) for ev in _raw(sample_file)]
+    path = tmp_path / "events.json"
+    path.write_text("[\n" + ",\n".join(lines[:5]) + "\n]\n,\n" + ",\n".join(lines[5:]) + "\n]\n", encoding="utf-8")
+    args = [str(path), "--term-start", sample_file.term_start, "--term-end", sample_file.term_end]
+
+    assert main(args) == 2  # without --fix it is still an error, with a hint not to append
+    assert ">>" in capsys.readouterr().out
+    assert main(args + ["--fix"]) == 0
+    assert "rebuilt it from its 10 event lines" in capsys.readouterr().out
+    assert len(json.loads(path.read_text(encoding="utf-8"))) == 10

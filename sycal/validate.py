@@ -15,6 +15,12 @@ Checks:
   * end time is after start time
   * citation quote appears in the extracted syllabus text (only with --text; with --fix a
     missing quote sets confidence low instead of failing)
+  * no one-off event on a holiday (sycal/holidays.py); with --fix an estimated date moves to the
+    next class day, and a date the syllabus gives is kept but set to low confidence
+  * with --fix, a file that isn't one JSON list (a model that appended with >>) is rebuilt from
+    its one-event-per-line objects
+  * with --fix, nothing but finals runs in finals week (the term's last week): weekly meetings
+    end before it, and estimated dates in it move to the last class day before it
 
 Output: "OK: ..." and exit 0, or "FAIL: N error(s)" then one line per error and exit 1.
 Exit 2 means the file could not be read at all (bad JSON, wrong top-level shape).
@@ -35,6 +41,15 @@ from pathlib import Path
 
 from icalendar import vRecur
 
+from sycal.holidays import (
+    class_days,
+    finals_week_start,
+    gives_date,
+    holiday_dates,
+    is_holiday,
+    next_class_day,
+    prev_class_day,
+)
 from sycal.schema import check_event
 
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -189,6 +204,7 @@ def errors_by_event(
     by_event: dict[int, list[str]] = {}
     seen: dict[tuple, int] = {}
     n = len(raw_events)
+    holidays, weekdays = holiday_dates(raw_events), class_days(raw_events)
 
     for i, ev in enumerate(raw_events, 1):
         label = f"event {i} of {n}"
@@ -219,7 +235,21 @@ def errors_by_event(
             if named and day.weekday() not in named:
                 said = "/".join(WEEKDAYS[d].title() for d in sorted(named))
                 errors.append(f"{label}: date {ev['date']} is a {WEEKDAYS[day.weekday()].title()} but citation says {said}")
-            if ev["confidence"] != "low" and not states_date(ev["citation"]):
+            if day in holidays and ev["type"] != "other":
+                if not gives_date(ev["citation"], day):
+                    moved = next_class_day(day, holidays, named or weekdays)
+                    errors.append(
+                        f"{label}: date {ev['date']} is a no-class day ({holidays[day]}); "
+                        f"the next class day is {moved.isoformat()}, so set date to that"
+                    )
+                elif ev["confidence"] != "low":
+                    errors.append(
+                        f"{label}: date {ev['date']} is a no-class day ({holidays[day]}); if the syllabus "
+                        'really gives this date keep it but set confidence "low", otherwise fix the date'
+                    )
+            # A no-class cell of a schedule grid ("| M | Intro | 8.1 | N/A |") is dated by its week column.
+            grid_day_off = is_holiday(ev) and citation_quote(ev["citation"]).startswith("|")
+            if ev["confidence"] != "low" and not states_date(ev["citation"]) and not grid_day_off:
                 errors.append(
                     f"{label}: citation gives no date, so {ev['date']} is a guess; if the syllabus never says when, "
                     'keep your best estimate but set confidence "low" so the student confirms it'
@@ -370,6 +400,115 @@ def repair_against_text(ev: object, text: str | None) -> list[str]:
     return fixes
 
 
+def repair_holidays(raw_events: list) -> list[str]:
+    """Keep one-off events off no-class days, in place: an estimated date moves to the next class
+    day; a date the syllabus itself gives stays but is flagged for review. Returns what changed."""
+    holidays, weekdays = holiday_dates(raw_events), class_days(raw_events)
+    fixes = []
+    for i, ev in enumerate(raw_events, 1):
+        if check_event(ev) or ev.get("recurrence") or ev["type"] == "other":
+            continue
+        day = date.fromisoformat(ev["date"])
+        if day not in holidays:
+            continue
+        if not gives_date(ev["citation"], day):
+            moved = next_class_day(day, holidays, named_weekdays(ev["citation"]) or weekdays)
+            ev["date"], ev["confidence"] = moved.isoformat(), "low"
+            fixes.append(
+                f"auto-fixed event {i} ({ev['title']}): date {day} is a no-class day ({holidays[day]}) "
+                f"-> {moved} (next class day)"
+            )
+        elif ev["confidence"] != "low":
+            ev["confidence"] = "low"
+            fixes.append(
+                f"needs review, event {i} ({ev['title']}): {day} is a no-class day ({holidays[day]}) "
+                "but the syllabus gives that date, set confidence low"
+            )
+    return fixes
+
+
+def repair_estimated_exams(raw_events: list, term_start: str, term_end: str) -> list[str]:
+    """Put exams whose date was estimated where such exams happen, in place: an in-class quiz
+    or midterm on a lecture day at lecture time (one held "in discussion"/"in lab" on that
+    meeting's day), and a final in finals week. Returns what changed."""
+    meetings = [ev for ev in raw_events if not check_event(ev) and ev["type"] == "class" and ev.get("recurrence")]
+    lecture = next((ev for ev in meetings if re.search(r"lecture|class", ev["title"], re.I)), meetings[0] if meetings else None)
+    if lecture is None:
+        return []
+    holidays = holiday_dates(raw_events)
+    finals = finals_week_start(term_start, term_end)
+    fixes = []
+    for i, ev in enumerate(raw_events, 1):
+        if check_event(ev) or ev.get("recurrence") or ev["type"] != "exam":
+            continue
+        day = date.fromisoformat(ev["date"])
+        if gives_date(ev["citation"], day):
+            continue
+        if re.search(r"\bfinal\b", ev["title"], re.I):
+            if finals and day < finals:  # finals have their own schedule: the day is a guess, the time unknown
+                moved = next_class_day(finals - timedelta(days=1), holidays, class_days([lecture]))
+                if moved <= date.fromisoformat(term_end):
+                    ev["date"], ev["start"], ev["end"], ev["confidence"] = moved.isoformat(), None, None, "low"
+                    fixes.append(f"auto-fixed event {i} ({ev['title']}): estimated final moved to finals week, {moved}")
+            continue
+        meeting = lecture
+        if re.search(r"discussion|\blab|section|recitation", ev["citation"], re.I):
+            meeting = next((m for m in meetings if re.search(r"discussion|\blab|section|recitation", m["title"], re.I)), lecture)
+        days = named_weekdays(ev["citation"]) or class_days([meeting])
+        if day.weekday() not in days or day in holidays:
+            moved = next_class_day(day - timedelta(days=1), holidays, days)
+            ev["date"], ev["confidence"] = moved.isoformat(), "low"
+            fixes.append(f"auto-fixed event {i} ({ev['title']}): estimated date {day} is not a class day -> {moved}")
+        if not ev.get("start") and meeting is lecture and lecture.get("start"):  # "in-class": at lecture time
+            ev["start"], ev["end"] = lecture["start"], lecture.get("end")
+    return fixes
+
+
+def salvage_events(content: str) -> list | None:
+    """Events from a file that isn't valid JSON. The prompt asks for one event per line, so each
+    "{...}" line is read on its own; stray commas, brackets, and a second appended list are
+    ignored. None if no line is an event."""
+    events = []
+    for line in content.splitlines():
+        line = line.strip().strip(",").strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return events or None
+
+
+def repair_finals(raw_events: list, term_start: str, term_end: str) -> list[str]:
+    """Finals week (the term's last week) has no classes and no regular schedule, in place:
+    weekly classes/office hours end the day before it, and a one-off event with an estimated date
+    in it moves to the last class day before it. Final exams, and dates the syllabus itself
+    gives, stay. Returns what changed."""
+    finals = finals_week_start(term_start, term_end)
+    if finals is None:
+        return []
+    last = finals - timedelta(days=1)
+    holidays, weekdays = holiday_dates(raw_events), class_days(raw_events)
+    fixes = []
+    for i, ev in enumerate(raw_events, 1):
+        if check_event(ev) or ev["type"] == "other":
+            continue
+        day = date.fromisoformat(ev["date"])
+        if ev.get("recurrence"):
+            until = re.search(r"UNTIL=(\d{8})", str(ev["recurrence"]))
+            if ev["type"] in ("class", "office_hours") and day < finals and until and until.group(1) > f"{last:%Y%m%d}":
+                ev["recurrence"] = re.sub(r"UNTIL=[^;]*", f"UNTIL={last:%Y%m%d}", str(ev["recurrence"]))
+                fixes.append(f"auto-fixed event {i} ({ev['title']}): ends {last} (no classes in finals week)")
+            continue
+        if day < finals or (ev["type"] == "exam" and re.search(r"final", ev["title"], re.I)):
+            continue
+        if not gives_date(ev["citation"], day):
+            moved = prev_class_day(finals, holidays, named_weekdays(ev["citation"]) or weekdays)
+            ev["date"], ev["confidence"] = moved.isoformat(), "low"
+            fixes.append(f"auto-fixed event {i} ({ev['title']}): date {day} is in finals week -> {moved} (last class day)")
+    return fixes
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("events", help="events.json (bare list or wrapped)")
@@ -383,14 +522,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    salvaged = []
     try:
-        raw = json.loads(Path(args.events).read_text(encoding="utf-8"))
+        content = Path(args.events).read_text(encoding="utf-8")
+        raw = json.loads(content)
     except FileNotFoundError:
         print(f"FAIL: {args.events} does not exist")
         return 2
     except json.JSONDecodeError as e:
-        print(f"FAIL: {args.events} is not valid JSON: {e.msg} at line {e.lineno} column {e.colno}")
-        return 2
+        raw = salvage_events(content) if args.fix else None
+        if not raw:
+            print(
+                f"FAIL: {args.events} is not valid JSON: {e.msg} at line {e.lineno} column {e.colno}. "
+                "Write the WHOLE file again with one cat <<'EOF' > command; never append to it with >>."
+            )
+            return 2
+        salvaged = [f"auto-fixed: the file was not one JSON list ({e.msg}); rebuilt it from its {len(raw)} event lines"]
     meta = raw if isinstance(raw, dict) else {}
     events = raw.get("events") if isinstance(raw, dict) else raw
     if not isinstance(events, list):
@@ -416,15 +563,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FAIL: {args.text} does not exist; run python -m sycal.extract first")
         return 2
 
-    fixed = []
+    fixed = salvaged
     if args.fix:
-        fixed = [
+        fixed += [
             f"auto-fixed event {i}: {f}"
             for i, ev in enumerate(events, 1)
             for f in repair_event(ev) + repair_against_text(ev, text)
         ]
+        fixed += repair_estimated_exams(events, term_start, term_end)
+        fixed += repair_holidays(events)
         if text is not None:
             fixed += flag_ungrounded(events, text)
+        fixed += repair_finals(events, term_start, term_end)
         fixed += flag_estimated(events)
         if fixed:
             Path(args.events).write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

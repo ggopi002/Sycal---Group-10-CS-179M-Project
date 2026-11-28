@@ -70,4 +70,15 @@ def test_retry_gate_stops_a_model_repeating_the_same_errors(tmp_path, monkeypatc
 
     assert row["exit_status"] == "RetryLimit"
     assert row["steps"] == 4  # stopped at the second identical FAIL, not at the time limit
-    assert row["n_events"] == 1 and row["n_low"] == 1  # kept on the calendar, flagged for review
+    assert row["n_events"] == 4 and row["n_low"] == 1  # Final flagged; lecture, office hours, Thanksgiving added
+
+
+def test_prompt_lists_the_meetings_the_parser_found(sample_text):
+    hints = run.meeting_hints(sample_text, Syllabus("sample.html", "CS 999", "2026-09-24", "2026-12-11"))
+    assert [json.loads(line)["title"] for line in hints.splitlines()] == ["Lecture", "Office hours"]
+
+
+def test_run_folder_name_has_no_spaces():
+    # The agent types the folder path unquoted, so "CS150 Syllabus - Google Docs" broke every command.
+    assert Syllabus("/x/CS150 Syllabus - Google Docs.pdf", "", "", "").stem == "CS150_Syllabus_-_Google_Docs"
+    assert Syllabus("outputs/uploads/ui-1/CS180Syllabusfortesting.pdf", "", "", "").stem == "CS180Syllabusfortesting"
